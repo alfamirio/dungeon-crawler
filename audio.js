@@ -112,6 +112,25 @@
       bombPlace(){
         tone(220, 0.06, {type:'sine', gain:0.14, freqEnd:140});
       },
+      // Turret-fired bullet -- a quick, thin "pew" so a room full of
+      // turrets doesn't drown everything else out.
+      enemyShoot(){
+        if(!throttle('enemyShoot', 90)) return;
+        tone(560, 0.05, {type:'square', gain:0.08, freqEnd:340});
+      },
+      // Lobbed bomb/grenade leaving a bomberTurret/grenadeTurret/boss --
+      // a soft low "thoop" distinct from the player's own bombPlace.
+      enemyThrow(){
+        if(!throttle('enemyThrow', 100)) return;
+        tone(260, 0.11, {type:'sine', gain:0.11, freqEnd:150});
+        noiseBurst(0.05, {gain:0.06, filterFreq:900, filterType:'bandpass', delay:0.01});
+      },
+      // Melee windup for enemies that telegraph a swing (boss weapon,
+      // chainChaser's chain) -- quiet whoosh so it reads as a cue, not a hit.
+      enemySwing(){
+        if(!throttle('enemySwing', 120)) return;
+        noiseBurst(0.09, {gain:0.12, filterFreq:1500, filterType:'bandpass'});
+      },
       dash(){
         if(!throttle('dash', 150)) return;
         noiseBurst(0.12, {gain:0.16, filterFreq:2200, filterType:'highpass'});

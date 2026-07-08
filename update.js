@@ -177,10 +177,13 @@
     }
 
     // dash: quick burst of speed in the facing direction, with brief
-    // invulnerability -- unlocked as a skill pickup like the bow/bomb bag
+    // invulnerability -- unlocked as a skill pickup like the bow/bomb bag.
+    // Can be triggered mid-jump (see jump below) to combo the two: the
+    // dash's speed burst carries the jump's hang/invuln window further,
+    // covering gaps neither ability alone would clear.
     if(player.dashCd>0) player.dashCd -= dt;
     if(player.dashing>0) player.dashing -= dt;
-    if(keys['KeyE'] && player.hasDash && player.dashCd<=0 && player.dashing<=0 && player.jumping<=0 && !player.shielding){
+    if(keys['KeyE'] && player.hasDash && player.dashCd<=0 && player.dashing<=0 && !player.shielding){
       player.dashCd = CONFIG.player.dashCooldown;
       player.dashing = CONFIG.player.dashDuration;
       player.dashDir = {x: player.dir.x, y: player.dir.y};
@@ -200,10 +203,12 @@
     // invulnerability (including to projectiles), without changing speed
     // or locking the facing direction the way dash does -- so the player
     // keeps steering normally while airborne. Unlocked as a skill pickup
-    // like the bow/bomb bag/dash. Mutually exclusive with dash.
+    // like the bow/bomb bag/dash. Can be triggered mid-dash (or dash
+    // triggered mid-jump, above) so the two combo into one longer,
+    // faster, fully-invulnerable traversal instead of blocking each other.
     if(player.jumpCd>0) player.jumpCd -= dt;
     if(player.jumping>0) player.jumping -= dt;
-    if(keys['KeyJ'] && player.hasJump && player.jumpCd<=0 && player.jumping<=0 && player.dashing<=0 && !player.shielding){
+    if(keys['KeyJ'] && player.hasJump && player.jumpCd<=0 && player.jumping<=0 && !player.shielding){
       player.jumpCd = CONFIG.player.jumpCooldown;
       player.jumping = CONFIG.player.jumpDuration;
       player.invuln = Math.max(player.invuln, CONFIG.player.jumpDuration);
@@ -295,9 +300,9 @@
           SFX.enemyHit();
         }
       }
-      // switch-puzzle pedestals are "hit" the same way enemies are -- but
-      // only for the 'switch' kind; 'snipe' pedestals ignore melee entirely
-      // and only respond to arrows (see the arrow-update loop below)
+      // puzzle pedestals/targets are "hit" the same way enemies are:
+      // switch pedestals and the snipe target both now respond to either
+      // weapon (sword here, arrows in the arrow-update loop below).
       const pinst = curInst();
       if(pinst.puzzle && pinst.puzzle.kind==='switch'){
         for(let si=0; si<pinst.puzzle.switches.length; si++){
@@ -305,6 +310,10 @@
           const swRect = {x:sw.x-sw.r, y:sw.y-sw.r, w:sw.r*2, h:sw.r*2};
           if(rectsOverlap(hb, swRect)){ pressSwitch(pinst, si); break; }
         }
+      } else if(pinst.puzzle && pinst.puzzle.kind==='snipe' && !pinst.puzzle.solved){
+        const tgt = pinst.puzzle.target;
+        const tgtRect = {x:tgt.x-tgt.r, y:tgt.y-tgt.r, w:tgt.r*2, h:tgt.r*2};
+        if(rectsOverlap(hb, tgtRect)) hitSnipeTarget(pinst);
       }
     }
 
@@ -467,6 +476,7 @@
           } else if(d <= bc.meleeRange && en.meleeCd<=0){
             en.meleeState = 'windup';
             en.meleeTimer = bc.meleeWindup;
+            SFX.enemySwing();
           }
 
           // chase the player the rest of the time (slows to a stalk while
@@ -479,6 +489,7 @@
           const aim = dirToPlayer(en);
           const ps = CONFIG.combat.projectileSpeed;
           projectiles.push({x:en.x,y:en.y,vx:aim.dx*ps,vy:aim.dy*ps,r:CONFIG.combat.projectileRadius});
+          SFX.enemyShoot();
         });
       } else if(en.type==='bomberTurret'){
         tickCooldown(en, 'shootCd', dt, CONFIG.enemies.bomberTurret.shootCooldown, () => throwBomb(en));
@@ -503,6 +514,7 @@
             shake = Math.max(shake, CONFIG.effects.bombShake*0.9);
             hitStop = CONFIG.effects.bombHitStop;
             flash = 0.7; flashColor = '154,95,224';
+            SFX.explosion();
             if(dist(player.x,player.y,en.x,en.y) < bc.explodeRadius + player.w/2 && !isShieldBlocking(en.x,en.y)){
               damagePlayer(bc.explodeDamage);
             }
@@ -522,6 +534,7 @@
           if(d <= cc.chainRange){
             en.chainSwing = cc.chainSwingDuration;
             en.chainAngle = Math.atan2(player.y-en.y, player.x-en.x);
+            SFX.enemySwing();
             if(isShieldBlocking(en.x,en.y)){
               spawnBlockSpark(player.x, player.y);
             } else {
@@ -535,7 +548,13 @@
 
       const pushDist = en.r + player.w/2;
       let pd = dist(en.x,en.y,player.x,player.y);
-      if(pd < pushDist){
+      // Mid-jump, the player clears a basic chaser entirely -- no damage,
+      // no shove, nothing -- reading as a clean leap over it rather than
+      // barreling through. Only the plain 'chaser' type is hoppable this
+      // way; tougher/ranged enemies still block normally even while airborne.
+      if(pd < pushDist && player.jumping>0 && en.type==='chaser'){
+        // no-op: skip the whole contact/push resolution below
+      } else if(pd < pushDist){
         const shieldBlock = isShieldBlocking(en.x,en.y);
         if(shieldBlock){
           if(!(en._blockCd>0)){
@@ -652,12 +671,17 @@
       }
       if(blockedByWall){ projectiles.splice(i,1); continue; }
       if(dist(p.x,p.y,player.x,player.y) < p.r+player.w/2){
-        if(isShieldBlocking(p.x,p.y)){
+        if(player.jumping>0){
+          // airborne -- the bullet/shrapnel passes harmlessly underneath
+          // instead of being consumed on contact, so it visibly flies on
+          // rather than vanishing into a player who took no damage
+        } else if(isShieldBlocking(p.x,p.y)){
           spawnBlockSpark(p.x,p.y);
+          projectiles.splice(i,1);
         } else {
           damagePlayer(p.damage!==undefined ? p.damage : CONFIG.combat.projectileDamage);
+          projectiles.splice(i,1);
         }
-        projectiles.splice(i,1);
       }
     }
 
@@ -684,15 +708,24 @@
         }
       }
       if(hit){ arrows.splice(i,1); continue; }
-      // snipe-puzzle target: only an arrow can trigger this (melee doesn't
-      // -- see the attack handler above, and the moat keeps the player
-      // from just walking up to it anyway)
-      const snipeInst = curInst();
-      if(snipeInst.puzzle && snipeInst.puzzle.kind==='snipe' && !snipeInst.puzzle.solved){
-        const tgt = snipeInst.puzzle.target;
+      // puzzle pedestals/targets: the snipe target was already arrow-only,
+      // and switch pedestals now also accept arrows (melee handles them in
+      // the attack handler above) so either weapon works on both puzzles.
+      const puzInst = curInst();
+      if(puzInst.puzzle && puzInst.puzzle.kind==='snipe' && !puzInst.puzzle.solved){
+        const tgt = puzInst.puzzle.target;
         if(dist(a.x,a.y,tgt.x,tgt.y) < tgt.r + CONFIG.player.arrowWidth){
-          hitSnipeTarget(snipeInst);
+          hitSnipeTarget(puzInst);
           hit = true;
+        }
+      } else if(puzInst.puzzle && puzInst.puzzle.kind==='switch'){
+        for(let si=0; si<puzInst.puzzle.switches.length; si++){
+          const sw = puzInst.puzzle.switches[si];
+          if(dist(a.x,a.y,sw.x,sw.y) < sw.r + CONFIG.player.arrowWidth){
+            pressSwitch(puzInst, si);
+            hit = true;
+            break;
+          }
         }
       }
       if(hit){ arrows.splice(i,1); continue; }
@@ -710,6 +743,7 @@
       shake = Math.max(shake, CONFIG.effects.bombShake*0.85);
       hitStop = CONFIG.effects.bombHitStop;
       flash = 0.65; flashColor = '154,95,224';
+      SFX.explosion();
       if(dist(player.x,player.y,b.x,b.y) < b.radius+player.w/2){
         damagePlayer(b.damage);
       }

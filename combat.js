@@ -119,6 +119,7 @@
       phase: 'air',
       fuse: bc.bombFuseTime, radius: bc.bombRadius, damage: bc.bombDamageToPlayer
     });
+    SFX.enemyThrow();
   }
 
   // Red grenadeTurret (and the boss's grenade barrage): lobs a grenade
@@ -140,6 +141,7 @@
       shrapnelRadius: gc.shrapnelRadius, shrapnelDamage: gc.shrapnelDamage,
       shrapnelLife: gc.shrapnelLife
     });
+    SFX.enemyThrow();
   }
 
   function explodeGrenade(g){
