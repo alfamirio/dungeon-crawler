@@ -15,6 +15,7 @@ Double-click `index.html`, or open it in any modern browser. That's it.
 | F              | Fire bow            |
 | Shift          | Raise shield        |
 | B              | Place bomb          |
+| M              | Mute/unmute audio   |
 
 Debug keys:
 
@@ -31,6 +32,7 @@ The game logic is split into 9 scripts, loaded by `index.html` in dependency ord
 
 | File            | Contents                                                                 |
 |-----------------|---------------------------------------------------------------------------|
+| `audio.js`      | `SFX` — synthesized WebAudio sound effects (no audio files/assets). Self-contained, no dependencies |
 | `config.js`     | `CONFIG` (all tunable gameplay/visual numbers), `COLORS`, `BIOMES`, derived canvas/room constants |
 | `utils.js`      | Generic helpers (`clamp`, `lerp`, `dist`, weighted-random pickers, etc.) and `biomeFor()` |
 | `dungeon-gen.js`| `generateDungeon()` — builds the room/door graph for a run                |
@@ -42,6 +44,12 @@ The game logic is split into 9 scripts, loaded by `index.html` in dependency ord
 | `main.js`       | HUD (hearts, resources, minimap, biome label) and the main `requestAnimationFrame` loop |
 
 Because everything shares one global scope, load order in `index.html` matters — each file assumes the ones before it have already run.
+
+## Audio
+
+All sound is synthesized live via the Web Audio API in `audio.js` — there are no `.mp3`/`.wav` files to manage. Sounds are intentionally subtle: a low master gain, short soft-edged envelopes, and per-sound throttling so rapid repeated events (a flurry of hits, several turret shots at once) don't stack into a wall of noise. Press **M** to mute/unmute at any time.
+
+Browsers block audio until a real user gesture; `audio.js` unlocks itself automatically on the player's first keypress or click, so no separate "click to enable sound" screen is needed.
 
 ## Rebalancing
 

@@ -116,5 +116,9 @@
   });
   window.addEventListener('keyup', e=>{ keys[e.code] = false; });
 
+  window.addEventListener('keydown', e=>{
+    if(e.code==='KeyM') SFX.toggleMuted();
+  });
+
   document.getElementById('restart').addEventListener('click', newGame);
 

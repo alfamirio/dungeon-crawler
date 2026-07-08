@@ -47,6 +47,7 @@
     // slowdown for as long as contact continues. Hit-stop is reserved for
     // one-off impacts (sword connects, player takes damage, bomb explodes).
     spawnParticles(x, y, '#dfe8ff', 4);
+    SFX.shieldBlock();
   }
 
   function damagePlayer(amount){
@@ -59,7 +60,8 @@
     shake = CONFIG.effects.hitShake;
     hitStop = CONFIG.effects.hitStop;
     flash = 1; flashColor = '226,85,90';
-    if(player.hp<=0){ gameOver = true; showMessage('You have fallen', 'press retry'); }
+    SFX.playerHurt();
+    if(player.hp<=0){ gameOver = true; showMessage('You have fallen', 'press retry'); SFX.gameOver(); }
   }
 
   // Scores how well the player just handled a fight (0 = rough, 1 = flawless
@@ -128,6 +130,7 @@
     shake = Math.max(shake, CONFIG.effects.bombShake);
     hitStop = CONFIG.effects.bombHitStop;
     flash = 0.75; flashColor = '198,40,57';
+    SFX.explosion();
     const n = g.shrapnelCount;
     const spin = Math.random()*Math.PI*2;
     for(let i=0;i<n;i++){
@@ -172,6 +175,7 @@
         d.state = 'open';
         player.hasKey = false;
         spawnParticles(player.x, player.y, COLORS.chest, 20);
+        SFX.doorUnlock();
         return true;
       }
     }
@@ -196,6 +200,7 @@
       if(door && door.state==='cracked' && nearWallSide(d, bx, by)){
         door.state = 'open';
         spawnParticles(bx,by, COLORS.wallCracked, 24);
+        SFX.wallBreak();
       }
     }
   }

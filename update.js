@@ -127,6 +127,7 @@
     if(keys['Space'] && player.attackCd<=0 && !player.shielding){
       player.attackCd = CONFIG.player.attackCooldown;
       player.attacking = CONFIG.player.attackDuration;
+      SFX.attack();
       const hb = playerAttackHitbox();
       for(const en of curInst().enemies){
         const enRect = {x:en.x-en.r, y:en.y-en.r, w:en.r*2, h:en.r*2};
@@ -138,6 +139,7 @@
           en.y += player.dir.y*kb*dt*6;
           spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:COLORS.chaser, 8);
           hitStop = Math.max(hitStop, CONFIG.effects.attackHitStop);
+          SFX.enemyHit();
         }
       }
     }
@@ -149,6 +151,7 @@
       player.bowCd = CONFIG.player.bowCooldown;
       player.bowDraw = CONFIG.player.bowDrawDuration;
       if(!player.infiniteAmmo) player.arrows--;
+      SFX.bowFire();
       const ac = CONFIG.combat;
       arrows.push({
         x: player.x + player.dir.x*player.w*0.4,
@@ -161,6 +164,7 @@
     // bomb placement
     if(keys['KeyB'] && player.hasBombBag && (player.infiniteAmmo || player.bombs>0) && !player._bombLock){
       if(!player.infiniteAmmo) player.bombs--;
+      SFX.bombPlace();
       bombs.push({x:player.x, y:player.y, fuse:CONFIG.combat.bombFuseTime});
       player._bombLock = true;
     }
@@ -218,6 +222,7 @@
         shake = CONFIG.effects.bombShake;
         hitStop = CONFIG.effects.bombHitStop;
         flash = 0.8; flashColor = '255,176,32';
+        SFX.explosion();
         const radius = CONFIG.combat.bombRadius;
         for(const en of curInst().enemies){
           if(dist(en.x,en.y,b.x,b.y) < radius+en.r){
@@ -241,6 +246,7 @@
       if(en._blockCd>0) en._blockCd -= dt;
       if(en.hp<=0){
         spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:'#ffffff', 16);
+        SFX.enemyDeath();
         roomInst.enemies.splice(i,1);
         continue;
       }
@@ -409,7 +415,9 @@
       if(roomInst.meta.type==='boss'){
         gameWon = true;
         showMessage('Dungeon complete!', 'press retry for another seed');
+        SFX.victory();
       } else if(roomInst.meta.type==='normal'){
+        SFX.roomClear();
         // reward for clearing a fight: either a treasure chest (tops up
         // bomb/arrow ammo) or a heart (restores health), chosen randomly.
         // The bow and bomb bag themselves are found as separate skill
@@ -458,6 +466,7 @@
           en.x += (a.vx/Math.hypot(a.vx,a.vy))*kb*dt*6;
           en.y += (a.vy/Math.hypot(a.vx,a.vy))*kb*dt*6;
           spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:COLORS.arrowShaft, 8);
+          SFX.enemyHit();
           hitStop = Math.max(hitStop, CONFIG.effects.attackHitStop);
           hit = true;
           break;
@@ -508,13 +517,16 @@
         player.happyTimer = CONFIG.player.happyEyeDuration;
         if(meta.type==='key'){
           player.hasKey = true;
+          SFX.keyPickup();
         } else if(meta.type==='item'){
           player.maxBombs = Math.min(player.maxBombs+CONFIG.items.maxBombsIncrement, CONFIG.items.maxBombsCap);
           player.bombs = Math.min(player.bombs+CONFIG.items.bombRefillAmount, player.maxBombs);
           player.maxArrows = Math.min(player.maxArrows+CONFIG.items.maxArrowsIncrement, CONFIG.items.maxArrowsCap);
           player.arrows = Math.min(player.arrows+CONFIG.items.arrowRefillAmount, player.maxArrows);
+          SFX.pickup();
         } else if(meta.type==='secret'){
           player.hp = Math.min(player.hp+CONFIG.items.secretHealAmount, player.maxHp);
+          SFX.pickup();
         }
         spawnParticles(cx,cy,COLORS.chest,24);
       }
@@ -528,12 +540,14 @@
       if(player.hasBombBag) player.bombs = Math.min(player.bombs+Math.round(player.maxBombs*pct), player.maxBombs);
       if(player.hasBow) player.arrows = Math.min(player.arrows+Math.round(player.maxArrows*pct), player.maxArrows);
       spawnParticles(bd.x,bd.y,COLORS.bombFuse,20);
+      SFX.pickup();
     });
 
     tryCollectDrop(roomInst.heartDrop, CONFIG.rooms.bombDropPickupRadius, (hd) => {
       const healAmount = Math.round(player.maxHp*CONFIG.items.roomDropHeartHealPercent);
       player.hp = Math.min(player.hp+healAmount, player.maxHp);
       spawnParticles(hd.x,hd.y,COLORS.boss,20);
+      SFX.pickup();
     });
 
     // skill pickups: the bow and bomb bag are each found once, in a
@@ -548,10 +562,12 @@
           player.hasBow = true;
           player.arrows = Math.min(player.arrows+CONFIG.items.arrowRoomDropAmount, player.maxArrows);
           spawnParticles(sp.x,sp.y,COLORS.bow,20);
+          SFX.pickup();
         } else if(roomInst.skillItem==='bombBag'){
           player.hasBombBag = true;
           player.bombs = Math.min(player.bombs+CONFIG.items.bombRoomDropAmount, player.maxBombs);
           spawnParticles(sp.x,sp.y,COLORS.bombBag,20);
+          SFX.pickup();
         }
       }
     }
