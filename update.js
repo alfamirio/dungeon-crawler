@@ -150,21 +150,31 @@
   document.getElementById('btnWarpSnipe').addEventListener('click', () => warpToPuzzleRoom('snipe'));
   document.getElementById('btnWarpRush').addEventListener('click', () => warpToPuzzleRoom('rush'));
 
-  function update(dt){
-    if(flash>0) flash = Math.max(0, flash-dt*4);
-    if(gameOver || gameWon) return;
-    if(hitStop>0){ hitStop -= dt; return; }
-
-    if(CONFIG.difficulty.enabled){
-      const fightInst = curInst();
-      if(!fightInst.cleared && fightInst.enemies.length>0) skill.roomTime += dt;
+  // Runs `fn()` once at the moment `code` transitions from up to down, using
+  // `lockField` on the player object as the "still held" guard so keeping
+  // the key pressed doesn't repeat the action every frame. Shared by every
+  // one-shot debug hotkey in update() below (K/I/L/P/Y/H).
+  function onKeyPress(code, lockField, fn){
+    if(keys[code] && !player[lockField]){
+      player[lockField] = true;
+      fn();
     }
+    if(!keys[code]) player[lockField] = false;
+  }
 
-    // shield: held up while Shift is down, slows movement, and blocks
-    // frontal contact/projectile damage (see isShieldBlocking below)
-    player.shielding = player.hasShield && (keys['ShiftLeft']||keys['ShiftRight']);
+  // ---------- Per-frame update, broken into focused helpers ----------
+  // update(dt) at the bottom of this file used to be one ~625-line
+  // function. It's now a short orchestrator; everything it used to do
+  // inline lives in the named helpers below, grouped the same way the
+  // original comments grouped it (movement, combat actions, bombs,
+  // enemies, projectiles/hazards, pickups). Behavior/order is unchanged --
+  // this is purely a readability split, not a logic change.
 
-    // player movement
+  // ---- player movement & traversal abilities ----
+
+  // Reads WASD/arrow input into a unit-length (or zero) move vector, and
+  // updates player.dir whenever there's live input.
+  function readMoveInput(){
     let mx=0, my=0;
     if(keys['ArrowLeft']||keys['KeyA']) mx -= 1;
     if(keys['ArrowRight']||keys['KeyD']) mx += 1;
@@ -175,12 +185,14 @@
       mx/=len; my/=len;
       player.dir = {x:mx,y:my};
     }
+    return {mx, my};
+  }
 
-    // dash: quick burst of speed in the facing direction, with brief
-    // invulnerability -- unlocked as a skill pickup like the bow/bomb bag.
-    // Can be triggered mid-jump (see jump below) to combo the two: the
-    // dash's speed burst carries the jump's hang/invuln window further,
-    // covering gaps neither ability alone would clear.
+  // Ticks dash cooldown/duration, triggers a new dash on KeyE, and -- while
+  // a dash is in progress -- overrides the live input with the direction
+  // locked in at the moment the dash started. Returns the (possibly
+  // overridden) move vector.
+  function updateDash(dt, mx, my){
     if(player.dashCd>0) player.dashCd -= dt;
     if(player.dashing>0) player.dashing -= dt;
     if(keys['KeyE'] && player.hasDash && player.dashCd<=0 && player.dashing<=0 && !player.shielding){
@@ -193,19 +205,16 @@
       spawnParticles(player.x, player.y, COLORS.dash, 10);
     }
     if(player.dashing>0){
-      // locked to the direction the dash started in, ignoring live input,
-      // so releasing keys mid-dash doesn't cut it short
       mx = player.dashDir.x; my = player.dashDir.y;
       spawnParticles(player.x, player.y, COLORS.dash, 2);
     }
+    return {mx, my};
+  }
 
-    // jump: a brief hang time that skips falling into holes and grants
-    // invulnerability (including to projectiles), without changing speed
-    // or locking the facing direction the way dash does -- so the player
-    // keeps steering normally while airborne. Unlocked as a skill pickup
-    // like the bow/bomb bag/dash. Can be triggered mid-dash (or dash
-    // triggered mid-jump, above) so the two combo into one longer,
-    // faster, fully-invulnerable traversal instead of blocking each other.
+  // Ticks jump cooldown/duration and triggers a new jump on KeyJ. Unlike
+  // dash, jump never changes movement -- see its effects in the fall-hazard
+  // and enemy-contact checks elsewhere in this file.
+  function updateJump(dt){
     if(player.jumpCd>0) player.jumpCd -= dt;
     if(player.jumping>0) player.jumping -= dt;
     if(keys['KeyJ'] && player.hasJump && player.jumpCd<=0 && player.jumping<=0 && !player.shielding){
@@ -216,16 +225,19 @@
       SFX.jump();
       spawnParticles(player.x, player.y, COLORS.jump, 10);
     }
+  }
 
+  // Moves the player by (mx,my) at the current move speed, resolving
+  // collisions against the room's obstacles (and push-blocks, if any) one
+  // axis at a time so sliding along a wall/block works on both axes. Also
+  // checks the resulting position for a fall-into-hole death.
+  function movePlayerWithCollision(dt, mx, my){
     const moveSpeed = player.dashing>0
       ? CONFIG.player.dashSpeed
       : player.speed * (player.shielding ? CONFIG.player.shieldSpeedMultiplier : 1);
     const nx = player.x + mx*moveSpeed*dt;
     const ny = player.y + my*moveSpeed*dt;
 
-    // obstacle collision (simple AABB resolve, axis separated). Holes are
-    // deliberately excluded here -- they're a fall hazard, not a wall, so
-    // the player can walk out over one (see the fall-in check below).
     const inst = curInst();
     const hasPushBlocks = inst.puzzle && inst.puzzle.kind==='push';
     let px = nx, py = player.y;
@@ -256,9 +268,13 @@
       const hole = holeAt(player.x, player.y, inst.obstacles);
       if(hole) fallIntoHole();
     }
+  }
 
-
-    // room bounds / door transitions
+  // Checks whether the player has crossed a room edge into a door gap and,
+  // if the door is passable, hands off to moveToRoom(); otherwise (locked/
+  // sealed/off-gap) tries to unlock with a key, then clamps the player back
+  // inside the room.
+  function handleDoorTransitions(){
     const gapY = [(ROOM_H-DOOR_GAP)/2, (ROOM_H+DOOR_GAP)/2];
     const gapX = [(ROOM_W-DOOR_GAP)/2, (ROOM_W+DOOR_GAP)/2];
     // One entry per wall the player can cross: `crossed` says whether the
@@ -278,8 +294,26 @@
       if(passable) moveToRoom(nx, ny, e.name);
       else { tryOpenLockedDoor(nx,ny); e.clampBack(); }
     }
+  }
 
-    // attack
+  // One frame of player movement/traversal: input -> dash -> jump -> move
+  // & collide -> door crossing. Dash/jump are handled here (rather than
+  // alongside the player's other abilities below) because they directly
+  // feed into this frame's move vector and speed.
+  function updatePlayerMovement(dt){
+    let {mx, my} = readMoveInput();
+    ({mx, my} = updateDash(dt, mx, my));
+    updateJump(dt);
+    movePlayerWithCollision(dt, mx, my);
+    handleDoorTransitions();
+  }
+
+  // ---- player combat actions ----
+
+  // Sword swing, bow shot, and bomb placement -- the player's three combat
+  // actions, each gated by its own cooldown/resource and independent of
+  // movement.
+  function updatePlayerCombatActions(dt){
     if(player.attackCd>0) player.attackCd -= dt;
     if(player.attacking>0) player.attacking -= dt;
     if(keys['Space'] && player.attackCd<=0 && !player.shielding){
@@ -290,34 +324,15 @@
       for(const en of curInst().enemies){
         const enRect = {x:en.x-en.r, y:en.y-en.r, w:en.r*2, h:en.r*2};
         if(rectsOverlap(hb, enRect)){
-          en.hp -= CONFIG.combat.attackDamage;
-          en.hitFlash = 0.15;
-          const kb = CONFIG.combat.attackKnockback;
-          en.x += player.dir.x*kb*dt*6;
-          en.y += player.dir.y*kb*dt*6;
-          spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:COLORS.chaser, 8);
-          hitStop = Math.max(hitStop, CONFIG.effects.attackHitStop);
-          SFX.enemyHit();
+          applyEnemyHit(en, CONFIG.combat.attackDamage, player.dir.x, player.dir.y, CONFIG.combat.attackKnockback, dt, COLORS.chaser);
         }
       }
       // puzzle pedestals/targets are "hit" the same way enemies are:
-      // switch pedestals and the snipe target both now respond to either
-      // weapon (sword here, arrows in the arrow-update loop below).
-      const pinst = curInst();
-      if(pinst.puzzle && pinst.puzzle.kind==='switch'){
-        for(let si=0; si<pinst.puzzle.switches.length; si++){
-          const sw = pinst.puzzle.switches[si];
-          const swRect = {x:sw.x-sw.r, y:sw.y-sw.r, w:sw.r*2, h:sw.r*2};
-          if(rectsOverlap(hb, swRect)){ pressSwitch(pinst, si); break; }
-        }
-      } else if(pinst.puzzle && pinst.puzzle.kind==='snipe' && !pinst.puzzle.solved){
-        const tgt = pinst.puzzle.target;
-        const tgtRect = {x:tgt.x-tgt.r, y:tgt.y-tgt.r, w:tgt.r*2, h:tgt.r*2};
-        if(rectsOverlap(hb, tgtRect)) hitSnipeTarget(pinst);
-      }
+      // switch pedestals and the snipe target both respond to either
+      // weapon (sword here, arrows in updateArrows below).
+      checkPuzzleHit(curInst(), (x,y,r) => rectsOverlap(hb, {x:x-r, y:y-r, w:r*2, h:r*2}));
     }
 
-    // bow: fire an arrow in the direction the player is facing
     if(player.bowCd>0) player.bowCd -= dt;
     if(player.bowDraw>0) player.bowDraw -= dt;
     if(keys['KeyF'] && player.hasBow && player.bowCd<=0 && !player.shielding && (player.infiniteAmmo || player.arrows>0)){
@@ -335,7 +350,6 @@
       });
     }
 
-    // bomb placement
     if(keys['KeyB'] && player.hasBombBag && (player.infiniteAmmo || player.bombs>0) && !player._bombLock){
       if(!player.infiniteAmmo) player.bombs--;
       SFX.bombPlace();
@@ -344,55 +358,29 @@
       player._bombLock = true;
     }
     if(!keys['KeyB']) player._bombLock = false;
+  }
 
-    // DEBUG: K key kills all enemies in the current room
-    if(keys['KeyK'] && !player._debugKillLock){
-      player._debugKillLock = true;
-      debugKillRoom();
-    }
-    if(!keys['KeyK']) player._debugKillLock = false;
+  // One-shot debug hotkeys (K/I/L/P/Y/H) -- see onKeyPress() above.
+  function handleDebugHotkeys(){
+    onKeyPress('KeyK', '_debugKillLock', debugKillRoom);
+    onKeyPress('KeyI', '_debugGodLock', () => debugSetGodmode(!player.godmode));
+    onKeyPress('KeyL', '_debugUnlockLock', () => debugSetUnlockAll(!player.infiniteAmmo));
+    onKeyPress('KeyP', '_debugPuzzleLock', debugSolvePuzzle);
+    onKeyPress('KeyY', '_debugWarpLock', warpToBossRoom);
+    onKeyPress('KeyH', '_debugWarpStartLock', warpToStartRoom);
+  }
 
-    // DEBUG: I key toggles invincibility
-    if(keys['KeyI'] && !player._debugGodLock){
-      player._debugGodLock = true;
-      debugSetGodmode(!player.godmode);
-    }
-    if(!keys['KeyI']) player._debugGodLock = false;
-
-    // DEBUG: L key grants the bow + bomb bag + dash + jump + key, and toggles infinite bombs/arrows
-    if(keys['KeyL'] && !player._debugUnlockLock){
-      player._debugUnlockLock = true;
-      debugSetUnlockAll(!player.infiniteAmmo);
-    }
-    if(!keys['KeyL']) player._debugUnlockLock = false;
-
-    // DEBUG: P key instantly solves the current room's puzzle, if any
-    if(keys['KeyP'] && !player._debugPuzzleLock){
-      player._debugPuzzleLock = true;
-      debugSolvePuzzle();
-    }
-    if(!keys['KeyP']) player._debugPuzzleLock = false;
-
-    // DEBUG: Y key warps directly to the boss room
-    if(keys['KeyY'] && !player._debugWarpLock){
-      player._debugWarpLock = true;
-      warpToBossRoom();
-    }
-    if(!keys['KeyY']) player._debugWarpLock = false;
-
-    // DEBUG: H key warps directly back to the initial (start) room
-    if(keys['KeyH'] && !player._debugWarpStartLock){
-      player._debugWarpStartLock = true;
-      warpToStartRoom();
-    }
-    if(!keys['KeyH']) player._debugWarpStartLock = false;
-
-    // invuln timer
+  function tickPlayerTimers(dt){
     if(player.invuln>0) player.invuln -= dt;
     if(player.hurtTimer>0) player.hurtTimer -= dt;
     if(player.happyTimer>0) player.happyTimer -= dt;
+  }
 
-    // bombs update
+  // ---- bombs ----
+
+  // Ticks every placed bomb's fuse; on expiry, damages nearby enemies/
+  // player, breaks adjacent cracked walls, and checks detonate-puzzle targets.
+  function updateBombs(dt){
     for(let i=bombs.length-1;i>=0;i--){
       const b = bombs[i];
       b.fuse -= dt;
@@ -417,9 +405,195 @@
         bombs.splice(i,1);
       }
     }
+  }
 
-    // enemies update
-    const roomInst = curInst();
+  // ---- enemies: one handler per type, dispatched from updateEnemies ----
+
+  function updateChaserEnemy(en, dt, roomInst){
+    chaseToward(en, en.speed, dt, undefined, roomInst.obstacles);
+  }
+
+  function updateBossEnemy(en, dt, roomInst){
+    const bc = CONFIG.enemies.boss;
+    const d = dist(en.x,en.y,player.x,player.y);
+
+    if(en.meleeState==='windup'){
+      en.meleeTimer -= dt;
+      if(en.meleeTimer<=0){
+        en.meleeState = 'active';
+        en.meleeTimer = bc.meleeActive;
+        if(dist(en.x,en.y,player.x,player.y) <= bc.meleeRange){
+          if(isShieldBlocking(en.x,en.y)){
+            spawnBlockSpark(player.x, player.y);
+          } else {
+            damagePlayer(bc.meleeDamage);
+          }
+        }
+      }
+    } else if(en.meleeState==='active'){
+      en.meleeTimer -= dt;
+      if(en.meleeTimer<=0){
+        en.meleeState = 'idle';
+        en.meleeCd = bc.meleeCooldown;
+      }
+    } else {
+      // idle: tick cooldowns, run any pending grenade barrage, and decide
+      // whether to open a melee swing
+      if(en.meleeCd>0) en.meleeCd -= dt;
+      en.grenadeCd -= dt;
+
+      if(en.grenadeBarrageLeft>0){
+        en.grenadeBarrageTimer -= dt;
+        if(en.grenadeBarrageTimer<=0){
+          throwGrenade(en, bc.grenade);
+          en.grenadeBarrageLeft -= 1;
+          en.grenadeBarrageTimer = bc.grenadeBarrageDelay;
+        }
+      } else if(en.grenadeCd<=0){
+        en.grenadeBarrageLeft = bc.grenadeBarrageCount;
+        en.grenadeBarrageTimer = 0;
+        en.grenadeCd = bc.grenadeCooldown;
+      } else if(d <= bc.meleeRange && en.meleeCd<=0){
+        en.meleeState = 'windup';
+        en.meleeTimer = bc.meleeWindup;
+        SFX.enemySwing();
+      }
+
+      // chase the player the rest of the time (slows to a stalk while
+      // mid-barrage so the lobs read clearly)
+      const bossSpeed = en.grenadeBarrageLeft>0 ? en.speed*0.35 : en.speed;
+      chaseToward(en, bossSpeed, dt, d, roomInst.obstacles);
+    }
+  }
+
+  function updateTurretEnemy(en, dt){
+    tickCooldown(en, 'shootCd', dt, CONFIG.enemies.turret.shootCooldown, () => {
+      const aim = dirToPlayer(en);
+      const ps = CONFIG.combat.projectileSpeed;
+      projectiles.push({x:en.x,y:en.y,vx:aim.dx*ps,vy:aim.dy*ps,r:CONFIG.combat.projectileRadius});
+      SFX.enemyShoot();
+    });
+  }
+
+  function updateBomberTurretEnemy(en, dt){
+    tickCooldown(en, 'shootCd', dt, CONFIG.enemies.bomberTurret.shootCooldown, () => throwBomb(en));
+  }
+
+  function updateGrenadeTurretEnemy(en, dt){
+    tickCooldown(en, 'shootCd', dt, CONFIG.enemies.grenadeTurret.shootCooldown, () => throwGrenade(en));
+  }
+
+  // Returns true if this bomberChaser detonated this frame (so the caller
+  // should remove it from the room), false otherwise.
+  function updateBomberChaserEnemy(en, dt, roomInst){
+    const bc = CONFIG.enemies.bomberChaser;
+    const d = dist(en.x,en.y,player.x,player.y);
+    if(!en.armed){
+      // rushes the player like a regular chaser until close enough to arm
+      chaseToward(en, en.speed, dt, d, roomInst.obstacles);
+      if(d <= bc.triggerDistance){
+        en.armed = true;
+        en.fuse = bc.fuseTime;
+      }
+      return false;
+    }
+    // still lunges forward while armed, for extra threat during the fuse
+    chaseToward(en, en.speed*0.6, dt, d, roomInst.obstacles);
+    en.fuse -= dt;
+    if(en.fuse<=0){
+      spawnParticles(en.x,en.y, COLORS.bomberChaser, 28);
+      shake = Math.max(shake, CONFIG.effects.bombShake*0.9);
+      hitStop = CONFIG.effects.bombHitStop;
+      flash = 0.7; flashColor = '154,95,224';
+      SFX.explosion();
+      if(dist(player.x,player.y,en.x,en.y) < bc.explodeRadius + player.w/2 && !isShieldBlocking(en.x,en.y)){
+        damagePlayer(bc.explodeDamage);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  function updateChainChaserEnemy(en, dt, roomInst){
+    const cc = CONFIG.enemies.chainChaser;
+    const d = dist(en.x,en.y,player.x,player.y);
+    // closes the gap until just inside chain range, then holds position
+    if(d > cc.chainRange*0.85){
+      chaseToward(en, en.speed, dt, d, roomInst.obstacles);
+    }
+    if(en.chainSwing>0) en.chainSwing -= dt;
+    tickCooldown(en, 'shootCd', dt, cc.chainCooldown, () => {
+      if(d <= cc.chainRange){
+        en.chainSwing = cc.chainSwingDuration;
+        en.chainAngle = Math.atan2(player.y-en.y, player.x-en.x);
+        SFX.enemySwing();
+        if(isShieldBlocking(en.x,en.y)){
+          spawnBlockSpark(player.x, player.y);
+        } else {
+          damagePlayer(cc.chainDamage);
+        }
+      }
+    });
+  }
+
+  // Dispatches one enemy's per-frame AI to its type-specific handler.
+  // Returns true if the enemy destroyed itself this frame (only
+  // bomberChaser, on detonation) and should be spliced out by the caller.
+  function updateEnemyBehavior(en, dt, roomInst){
+    if(en.type==='chaser') updateChaserEnemy(en, dt, roomInst);
+    else if(en.type==='boss') updateBossEnemy(en, dt, roomInst);
+    else if(en.type==='turret') updateTurretEnemy(en, dt);
+    else if(en.type==='bomberTurret') updateBomberTurretEnemy(en, dt);
+    else if(en.type==='grenadeTurret') updateGrenadeTurretEnemy(en, dt);
+    else if(en.type==='bomberChaser') return updateBomberChaserEnemy(en, dt, roomInst);
+    else if(en.type==='chainChaser') updateChainChaserEnemy(en, dt, roomInst);
+    return false;
+  }
+
+  // Resolves player <-> enemy contact for one enemy already positioned this
+  // frame: shield-block/damage, shove-apart (with an extra shield-push
+  // force for eligible types), and the mid-jump "hop clean over a basic
+  // chaser" exception.
+  function resolveEnemyPlayerContact(en, dt, roomInst){
+    const pushDist = en.r + player.w/2;
+    let pd = dist(en.x,en.y,player.x,player.y);
+    if(pd < pushDist && player.jumping>0 && en.type==='chaser') return;
+    if(pd >= pushDist) return;
+
+    const shieldBlock = isShieldBlocking(en.x,en.y);
+    if(shieldBlock){
+      if(!(en._blockCd>0)){
+        spawnBlockSpark(en.x,en.y);
+        en._blockCd = 0.12;
+      }
+    } else {
+      const contactDamage = statsForEnemyType(en.type).contactDamage;
+      damagePlayer(contactDamage);
+    }
+    // push the enemy fully outside the player's collision radius so the
+    // two never keep overlapping frame after frame
+    let dx = en.x-player.x, dy = en.y-player.y;
+    if(pd < 0.001){ dx = 1; dy = 0; pd = 1; }
+    const nx = dx/pd, ny = dy/pd;
+    // Holding the shield against an eligible (small/light) enemy type
+    // shoves it back further each frame of continued contact -- unlike the
+    // passive "just resolve the overlap" push above, this lets the player
+    // actively bulldoze e.g. a chaser across the room and, if there's a
+    // hole nearby, straight into it.
+    const extraPush = (shieldBlock && CONFIG.player.shieldPushTypes.includes(en.type))
+      ? CONFIG.player.shieldPushForce*dt : 0;
+    const pushX = player.x + nx*(pushDist+extraPush);
+    const pushY = player.y + ny*(pushDist+extraPush);
+    if(!blockedByObstacle(pushX, en.y, en.r, roomInst.obstacles)) en.x = pushX;
+    if(!blockedByObstacle(en.x, pushY, en.r, roomInst.obstacles)) en.y = pushY;
+    en.x = clamp(en.x, en.r, ROOM_W-en.r);
+    en.y = clamp(en.y, en.r, ROOM_H-en.r);
+  }
+
+  // Main per-frame enemy pass: clears dead enemies, runs each survivor's
+  // AI, resolves player contact, and kills anything that's fallen into a
+  // hole (the boss is exempt -- too large to plausibly fall through one).
+  function updateEnemies(dt, roomInst){
     for(let i=roomInst.enemies.length-1;i>=0;i--){
       const en = roomInst.enemies[i];
       if(en.hitFlash>0) en.hitFlash -= dt;
@@ -431,166 +605,18 @@
         roomInst.enemies.splice(i,1);
         continue;
       }
-      if(en.type==='chaser'){
-        chaseToward(en, en.speed, dt, undefined, roomInst.obstacles);
-      } else if(en.type==='boss'){
-        const bc = CONFIG.enemies.boss;
-        const d = dist(en.x,en.y,player.x,player.y);
 
-        if(en.meleeState==='windup'){
-          en.meleeTimer -= dt;
-          if(en.meleeTimer<=0){
-            en.meleeState = 'active';
-            en.meleeTimer = bc.meleeActive;
-            if(dist(en.x,en.y,player.x,player.y) <= bc.meleeRange){
-              if(isShieldBlocking(en.x,en.y)){
-                spawnBlockSpark(player.x, player.y);
-              } else {
-                damagePlayer(bc.meleeDamage);
-              }
-            }
-          }
-        } else if(en.meleeState==='active'){
-          en.meleeTimer -= dt;
-          if(en.meleeTimer<=0){
-            en.meleeState = 'idle';
-            en.meleeCd = bc.meleeCooldown;
-          }
-        } else {
-          // idle: tick cooldowns, run any pending grenade barrage, and
-          // decide whether to open a melee swing
-          if(en.meleeCd>0) en.meleeCd -= dt;
-          en.grenadeCd -= dt;
-
-          if(en.grenadeBarrageLeft>0){
-            en.grenadeBarrageTimer -= dt;
-            if(en.grenadeBarrageTimer<=0){
-              throwGrenade(en, bc.grenade);
-              en.grenadeBarrageLeft -= 1;
-              en.grenadeBarrageTimer = bc.grenadeBarrageDelay;
-            }
-          } else if(en.grenadeCd<=0){
-            en.grenadeBarrageLeft = bc.grenadeBarrageCount;
-            en.grenadeBarrageTimer = 0;
-            en.grenadeCd = bc.grenadeCooldown;
-          } else if(d <= bc.meleeRange && en.meleeCd<=0){
-            en.meleeState = 'windup';
-            en.meleeTimer = bc.meleeWindup;
-            SFX.enemySwing();
-          }
-
-          // chase the player the rest of the time (slows to a stalk while
-          // mid-barrage so the lobs read clearly)
-          const bossSpeed = en.grenadeBarrageLeft>0 ? en.speed*0.35 : en.speed;
-          chaseToward(en, bossSpeed, dt, d, roomInst.obstacles);
-        }
-      } else if(en.type==='turret'){
-        tickCooldown(en, 'shootCd', dt, CONFIG.enemies.turret.shootCooldown, () => {
-          const aim = dirToPlayer(en);
-          const ps = CONFIG.combat.projectileSpeed;
-          projectiles.push({x:en.x,y:en.y,vx:aim.dx*ps,vy:aim.dy*ps,r:CONFIG.combat.projectileRadius});
-          SFX.enemyShoot();
-        });
-      } else if(en.type==='bomberTurret'){
-        tickCooldown(en, 'shootCd', dt, CONFIG.enemies.bomberTurret.shootCooldown, () => throwBomb(en));
-      } else if(en.type==='grenadeTurret'){
-        tickCooldown(en, 'shootCd', dt, CONFIG.enemies.grenadeTurret.shootCooldown, () => throwGrenade(en));
-      } else if(en.type==='bomberChaser'){
-        const bc = CONFIG.enemies.bomberChaser;
-        const d = dist(en.x,en.y,player.x,player.y);
-        if(!en.armed){
-          // rushes the player like a regular chaser until close enough to arm
-          chaseToward(en, en.speed, dt, d, roomInst.obstacles);
-          if(d <= bc.triggerDistance){
-            en.armed = true;
-            en.fuse = bc.fuseTime;
-          }
-        } else {
-          // still lunges forward while armed, for extra threat during the fuse
-          chaseToward(en, en.speed*0.6, dt, d, roomInst.obstacles);
-          en.fuse -= dt;
-          if(en.fuse<=0){
-            spawnParticles(en.x,en.y, COLORS.bomberChaser, 28);
-            shake = Math.max(shake, CONFIG.effects.bombShake*0.9);
-            hitStop = CONFIG.effects.bombHitStop;
-            flash = 0.7; flashColor = '154,95,224';
-            SFX.explosion();
-            if(dist(player.x,player.y,en.x,en.y) < bc.explodeRadius + player.w/2 && !isShieldBlocking(en.x,en.y)){
-              damagePlayer(bc.explodeDamage);
-            }
-            roomInst.enemies.splice(i,1);
-            continue;
-          }
-        }
-      } else if(en.type==='chainChaser'){
-        const cc = CONFIG.enemies.chainChaser;
-        const d = dist(en.x,en.y,player.x,player.y);
-        // closes the gap until just inside chain range, then holds position
-        if(d > cc.chainRange*0.85){
-          chaseToward(en, en.speed, dt, d, roomInst.obstacles);
-        }
-        if(en.chainSwing>0) en.chainSwing -= dt;
-        tickCooldown(en, 'shootCd', dt, cc.chainCooldown, () => {
-          if(d <= cc.chainRange){
-            en.chainSwing = cc.chainSwingDuration;
-            en.chainAngle = Math.atan2(player.y-en.y, player.x-en.x);
-            SFX.enemySwing();
-            if(isShieldBlocking(en.x,en.y)){
-              spawnBlockSpark(player.x, player.y);
-            } else {
-              damagePlayer(cc.chainDamage);
-            }
-          }
-        });
+      const selfDestructed = updateEnemyBehavior(en, dt, roomInst);
+      if(selfDestructed){
+        roomInst.enemies.splice(i,1);
+        continue;
       }
+
       en.x = clamp(en.x, en.r, ROOM_W-en.r);
       en.y = clamp(en.y, en.r, ROOM_H-en.r);
 
-      const pushDist = en.r + player.w/2;
-      let pd = dist(en.x,en.y,player.x,player.y);
-      // Mid-jump, the player clears a basic chaser entirely -- no damage,
-      // no shove, nothing -- reading as a clean leap over it rather than
-      // barreling through. Only the plain 'chaser' type is hoppable this
-      // way; tougher/ranged enemies still block normally even while airborne.
-      if(pd < pushDist && player.jumping>0 && en.type==='chaser'){
-        // no-op: skip the whole contact/push resolution below
-      } else if(pd < pushDist){
-        const shieldBlock = isShieldBlocking(en.x,en.y);
-        if(shieldBlock){
-          if(!(en._blockCd>0)){
-            spawnBlockSpark(en.x,en.y);
-            en._blockCd = 0.12;
-          }
-        } else {
-          const contactDamage = statsForEnemyType(en.type).contactDamage;
-          damagePlayer(contactDamage);
-        }
-        // push the enemy fully outside the player's collision radius so
-        // the two never keep overlapping frame after frame
-        let dx = en.x-player.x, dy = en.y-player.y;
-        if(pd < 0.001){ dx = 1; dy = 0; pd = 1; }
-        const nx = dx/pd, ny = dy/pd;
-        // Holding the shield against an eligible (small/light) enemy type
-        // shoves it back further each frame of continued contact -- unlike
-        // the passive "just resolve the overlap" push above, this lets the
-        // player actively bulldoze e.g. a chaser across the room and, if
-        // there's a hole nearby, straight into it. Holes are deliberately
-        // NOT solid here (that's the whole point of shoving something into
-        // one) but walls/furniture are, via blockedByObstacle, so this
-        // can't shove an enemy through a wall.
-        const extraPush = (shieldBlock && CONFIG.player.shieldPushTypes.includes(en.type))
-          ? CONFIG.player.shieldPushForce*dt : 0;
-        const pushX = player.x + nx*(pushDist+extraPush);
-        const pushY = player.y + ny*(pushDist+extraPush);
-        if(!blockedByObstacle(pushX, en.y, en.r, roomInst.obstacles)) en.x = pushX;
-        if(!blockedByObstacle(en.x, pushY, en.r, roomInst.obstacles)) en.y = pushY;
-        en.x = clamp(en.x, en.r, ROOM_W-en.r);
-        en.y = clamp(en.y, en.r, ROOM_H-en.r);
-      }
+      resolveEnemyPlayerContact(en, dt, roomInst);
 
-      // fall hazard: any enemy that ends up substantially over a floor
-      // hole falls in and dies instantly. The boss is exempt -- it's far
-      // too large to plausibly fall through one.
       if(en.type!=='boss'){
         const hole = holeAt(en.x, en.y, roomInst.obstacles);
         if(hole){
@@ -602,9 +628,11 @@
         }
       }
     }
+  }
 
-    // keep enemies from overlapping each other: after everyone has moved,
-    // push any pair that intersects apart along their center-to-center axis
+  // Keeps enemies from overlapping each other: after everyone has moved,
+  // pushes any pair that intersects apart along their center-to-center axis.
+  function resolveEnemyOverlaps(roomInst){
     for(let a=0; a<roomInst.enemies.length; a++){
       for(let b=a+1; b<roomInst.enemies.length; b++){
         const ea = roomInst.enemies[a], eb = roomInst.enemies[b];
@@ -624,36 +652,40 @@
         }
       }
     }
+  }
 
-    // puzzle rooms: push-block plate coverage or switch-sequence solving,
-    // gating the room exactly like a fight does (via `cleared`)
-    if(roomInst.puzzle) updatePuzzle(roomInst, dt);
-
-    if(!roomInst.cleared && roomInst.meta.type!=='puzzle' && roomInst.enemies.length===0){
-      roomInst.cleared = true;
-      if(CONFIG.difficulty.enabled && roomInst.enemyCountAtStart>0){
-        updateSkillFactor(roomInst);
-      }
-      if(roomInst.meta.type==='boss'){
-        gameWon = true;
-        showMessage('Dungeon complete!', 'press retry for another seed');
-        SFX.victory();
-      } else if(roomInst.meta.type==='normal'){
-        SFX.roomClear();
-        // reward for clearing a fight: either a treasure chest (tops up
-        // bomb/arrow ammo) or a heart (restores health), chosen randomly.
-        // The bow and bomb bag themselves are found as separate skill
-        // pickups elsewhere in the dungeon.
-        const pos = findClearDropPos(roomInst.obstacles);
-        if(Math.random() < CONFIG.items.roomDropChestChance){
-          roomInst.bombDrop = {x: pos.x, y: pos.y, taken: false};
-        } else {
-          roomInst.heartDrop = {x: pos.x, y: pos.y, taken: false};
-        }
+  // Marks a fight room cleared the instant its last enemy falls, updates
+  // the adaptive-difficulty factor, and hands out the room's reward (boss
+  // victory message, or a chest/heart drop for a normal room).
+  function checkRoomClear(roomInst){
+    if(roomInst.cleared || roomInst.meta.type==='puzzle' || roomInst.enemies.length!==0) return;
+    roomInst.cleared = true;
+    if(CONFIG.difficulty.enabled && roomInst.enemyCountAtStart>0){
+      updateSkillFactor(roomInst);
+    }
+    if(roomInst.meta.type==='boss'){
+      gameWon = true;
+      showMessage('Dungeon complete!', 'press retry for another seed');
+      SFX.victory();
+    } else if(roomInst.meta.type==='normal'){
+      SFX.roomClear();
+      // reward for clearing a fight: either a treasure chest (tops up
+      // bomb/arrow ammo) or a heart (restores health), chosen randomly.
+      const pos = findClearDropPos(roomInst.obstacles);
+      if(Math.random() < CONFIG.items.roomDropChestChance){
+        roomInst.bombDrop = {x: pos.x, y: pos.y, taken: false};
+      } else {
+        roomInst.heartDrop = {x: pos.x, y: pos.y, taken: false};
       }
     }
+  }
 
-    // projectiles (straight turret bullets and radial grenade shrapnel alike)
+  // ---- projectiles & lobbed hazards ----
+
+  // Straight-flying turret bullets and grenade shrapnel: moves each one,
+  // expires it on lifetime/room-edge/wall, and damages (or is blocked from)
+  // the player on contact.
+  function updateProjectiles(dt){
     for(let i=projectiles.length-1;i>=0;i--){
       const p = projectiles[i];
       p.x += p.vx*dt; p.y += p.vy*dt;
@@ -673,8 +705,7 @@
       if(dist(p.x,p.y,player.x,player.y) < p.r+player.w/2){
         if(player.jumping>0){
           // airborne -- the bullet/shrapnel passes harmlessly underneath
-          // instead of being consumed on contact, so it visibly flies on
-          // rather than vanishing into a player who took no damage
+          // instead of being consumed on contact
         } else if(isShieldBlocking(p.x,p.y)){
           spawnBlockSpark(p.x,p.y);
           projectiles.splice(i,1);
@@ -684,9 +715,11 @@
         }
       }
     }
+  }
 
-    // player arrows: fly straight from the bow, damage the first enemy hit
-    // in the current room, and vanish at the room edge like other projectiles.
+  // Player-fired arrows: fly straight from the bow, damage the first enemy
+  // or puzzle prop hit, and vanish at the room edge or on a wall.
+  function updateArrows(dt){
     for(let i=arrows.length-1;i>=0;i--){
       const a = arrows[i];
       a.x += a.vx*dt; a.y += a.vy*dt;
@@ -694,15 +727,8 @@
       let hit = false;
       for(const en of curInst().enemies){
         if(dist(a.x,a.y,en.x,en.y) < en.r + CONFIG.player.arrowWidth){
-          en.hp -= CONFIG.combat.arrowDamage;
-          en.hitFlash = 0.15;
-          const kb = CONFIG.combat.arrowKnockback;
-          const d = dist(a.x,a.y,en.x,en.y) || 1;
-          en.x += (a.vx/Math.hypot(a.vx,a.vy))*kb*dt*6;
-          en.y += (a.vy/Math.hypot(a.vx,a.vy))*kb*dt*6;
-          spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:COLORS.arrowShaft, 8);
-          SFX.enemyHit();
-          hitStop = Math.max(hitStop, CONFIG.effects.attackHitStop);
+          const alen = Math.hypot(a.vx,a.vy) || 1;
+          applyEnemyHit(en, CONFIG.combat.arrowDamage, a.vx/alen, a.vy/alen, CONFIG.combat.arrowKnockback, dt, COLORS.arrowShaft);
           hit = true;
           break;
         }
@@ -710,34 +736,23 @@
       if(hit){ arrows.splice(i,1); continue; }
       // puzzle pedestals/targets: the snipe target was already arrow-only,
       // and switch pedestals now also accept arrows (melee handles them in
-      // the attack handler above) so either weapon works on both puzzles.
-      const puzInst = curInst();
-      if(puzInst.puzzle && puzInst.puzzle.kind==='snipe' && !puzInst.puzzle.solved){
-        const tgt = puzInst.puzzle.target;
-        if(dist(a.x,a.y,tgt.x,tgt.y) < tgt.r + CONFIG.player.arrowWidth){
-          hitSnipeTarget(puzInst);
-          hit = true;
-        }
-      } else if(puzInst.puzzle && puzInst.puzzle.kind==='switch'){
-        for(let si=0; si<puzInst.puzzle.switches.length; si++){
-          const sw = puzInst.puzzle.switches[si];
-          if(dist(a.x,a.y,sw.x,sw.y) < sw.r + CONFIG.player.arrowWidth){
-            pressSwitch(puzInst, si);
-            hit = true;
-            break;
-          }
-        }
-      }
+      // updatePlayerCombatActions) so either weapon works on both puzzles.
+      if(checkPuzzleHit(curInst(), (x,y,r) => dist(a.x,a.y,x,y) < r + CONFIG.player.arrowWidth)) hit = true;
       if(hit){ arrows.splice(i,1); continue; }
       for(const o of curInst().obstacles){
         if(o.kind==='hole') continue; // pits don't block arrows -- they fly straight over
         if(a.x>o.x && a.x<o.x+o.w && a.y>o.y && a.y<o.y+o.h){ arrows.splice(i,1); break; }
       }
     }
+  }
 
-    // thrown bombs (purple bomberTurret): fly in a straight line to a point
-    // no farther than maxThrowDistance from the thrower, then arm and
-    // explode like a regular bomb, only hurting the player.
+  // Thrown bombs (purple bomberTurret) and grenades (red grenadeTurret/
+  // boss): both use the shared lob physics in updateLobbed(), differing
+  // only in what happens on detonation.
+  function updateLobbedHazards(dt){
+    // thrown bombs: fly in a straight line to a point no farther than
+    // maxThrowDistance from the thrower, then arm and explode like a
+    // regular bomb, only hurting the player.
     updateLobbed(thrownBombs, dt, (b) => {
       spawnParticles(b.x,b.y, COLORS.thrownBomb, 26);
       shake = Math.max(shake, CONFIG.effects.bombShake*0.85);
@@ -749,11 +764,12 @@
       }
     });
 
-    // grenades (red grenadeTurret): same lob behavior, but burst into a
-    // ring of shrapnel bullets on detonation instead of a single blast.
+    // grenades: same lob behavior, but burst into a ring of shrapnel
+    // bullets on detonation instead of a single blast.
     updateLobbed(grenades, dt, explodeGrenade);
+  }
 
-    // particles
+  function updateParticles(dt){
     for(let i=particles.length-1;i>=0;i--){
       const pt = particles[i];
       pt.life -= dt;
@@ -763,36 +779,41 @@
       pt.rot += pt.rotSpeed*dt;
       if(pt.life<=0) particles.splice(i,1);
     }
+  }
 
-    updateAmbient(dt, biomeFor(roomInst.meta.dist));
+  // ---- pickups ----
 
-    // chest pickup (item/key/secret rooms)
+  // Chest/key/secret room pickup, grabbed by walking to the room center --
+  // distinct from the post-fight bomb/heart drops and skill items below,
+  // since it's tied to the room's *type* rather than clearing a fight.
+  function updateRoomTypePickup(roomInst){
     const meta = roomInst.meta;
-    if((meta.type==='item' || meta.type==='key' || meta.type==='secret') && !roomInst.chestTaken){
-      const cx = ROOM_W/2, cy = ROOM_H/2;
-      if(dist(player.x,player.y,cx,cy) < CONFIG.rooms.chestPickupRadius){
-        roomInst.chestTaken = true;
-        player.happyTimer = CONFIG.player.happyEyeDuration;
-        if(meta.type==='key'){
-          player.hasKey = true;
-          SFX.keyPickup();
-        } else if(meta.type==='item'){
-          player.maxBombs = Math.min(player.maxBombs+CONFIG.items.maxBombsIncrement, CONFIG.items.maxBombsCap);
-          player.bombs = Math.min(player.bombs+CONFIG.items.bombRefillAmount, player.maxBombs);
-          player.maxArrows = Math.min(player.maxArrows+CONFIG.items.maxArrowsIncrement, CONFIG.items.maxArrowsCap);
-          player.arrows = Math.min(player.arrows+CONFIG.items.arrowRefillAmount, player.maxArrows);
-          SFX.pickup();
-        } else if(meta.type==='secret'){
-          player.hp = Math.min(player.hp+CONFIG.items.secretHealAmount, player.maxHp);
-          SFX.pickup();
-        }
-        spawnParticles(cx,cy,COLORS.chest,24);
-      }
+    if((meta.type!=='item' && meta.type!=='key' && meta.type!=='secret') || roomInst.chestTaken) return;
+    const cx = ROOM_W/2, cy = ROOM_H/2;
+    if(dist(player.x,player.y,cx,cy) >= CONFIG.rooms.chestPickupRadius) return;
+    roomInst.chestTaken = true;
+    player.happyTimer = CONFIG.player.happyEyeDuration;
+    if(meta.type==='key'){
+      player.hasKey = true;
+      SFX.keyPickup();
+    } else if(meta.type==='item'){
+      player.maxBombs = Math.min(player.maxBombs+CONFIG.items.maxBombsIncrement, CONFIG.items.maxBombsCap);
+      player.bombs = Math.min(player.bombs+CONFIG.items.bombRefillAmount, player.maxBombs);
+      player.maxArrows = Math.min(player.maxArrows+CONFIG.items.maxArrowsIncrement, CONFIG.items.maxArrowsCap);
+      player.arrows = Math.min(player.arrows+CONFIG.items.arrowRefillAmount, player.maxArrows);
+      SFX.pickup();
+    } else if(meta.type==='secret'){
+      player.hp = Math.min(player.hp+CONFIG.items.secretHealAmount, player.maxHp);
+      SFX.pickup();
     }
+    spawnParticles(cx,cy,COLORS.chest,24);
+  }
 
-    // room-clear pickups: a chest (tops up bomb/arrow ammo) or a heart
-    // (restores health) appears once a normal room's enemies are defeated;
-    // both share the same "walk close enough, mark taken, react" shape.
+  // Post-fight/post-puzzle chest and heart drops, plus the one-time bow/
+  // bomb-bag/dash/jump skill pickups -- the chest/heart share the same
+  // "walk close enough" shape via tryCollectDrop(); the skill items have
+  // four distinct outcomes so are handled directly here instead.
+  function updateRoomRewardPickups(roomInst){
     tryCollectDrop(roomInst.bombDrop, CONFIG.rooms.bombDropPickupRadius, (bd) => {
       if(player.hasBombBag) player.bombs = Math.min(player.bombs+CONFIG.items.roomDropBombRefillAmount, player.maxBombs);
       if(player.hasBow) player.arrows = Math.min(player.arrows+CONFIG.items.roomDropArrowRefillAmount, player.maxArrows);
@@ -807,9 +828,6 @@
       SFX.pickup();
     });
 
-    // skill pickups: the bow and bomb bag are each found once, in a
-    // dedicated room, and can be grabbed as soon as the room is entered --
-    // even before its enemies have been dealt with.
     if(roomInst.skillItem && !roomInst.skillTaken){
       const sp = roomInst.skillPos;
       if(dist(player.x,player.y,sp.x,sp.y) < CONFIG.rooms.skillPickupRadius){
@@ -836,9 +854,59 @@
         }
       }
     }
+  }
+
+  // ---------- Main per-frame update ----------
+  // Runs once per animation frame (see loop() in main.js). Orchestrates
+  // player input/movement/combat, enemy AI, projectiles/hazards, puzzles,
+  // and pickups in the order each depends on the last -- see the
+  // individual helpers above for what each stage does.
+  //
+  // Note: several stages below re-fetch curInst() instead of reusing one
+  // shared `roomInst`. That's not redundancy -- handleDoorTransitions()
+  // (called from updatePlayerMovement) can change `current` mid-frame, so
+  // anything after it needs the *new* room, not the one the player started
+  // the frame in. `roomInst` is only captured once we're past that point.
+  function update(dt){
+    if(flash>0) flash = Math.max(0, flash-dt*4);
+    if(gameOver || gameWon) return;
+    if(hitStop>0){ hitStop -= dt; return; }
+
+    if(CONFIG.difficulty.enabled){
+      const fightInst = curInst();
+      if(!fightInst.cleared && fightInst.enemies.length>0) skill.roomTime += dt;
+    }
+
+    // shield: held up while Shift is down, slows movement, and blocks
+    // frontal contact/projectile damage (see isShieldBlocking)
+    player.shielding = player.hasShield && (keys['ShiftLeft']||keys['ShiftRight']);
+
+    updatePlayerMovement(dt);
+    updatePlayerCombatActions(dt);
+    handleDebugHotkeys();
+    tickPlayerTimers(dt);
+
+    updateBombs(dt);
+
+    const roomInst = curInst();
+    updateEnemies(dt, roomInst);
+    resolveEnemyOverlaps(roomInst);
+
+    // puzzle rooms: push-block plate coverage or switch-sequence solving,
+    // gating the room exactly like a fight does (via `cleared`)
+    if(roomInst.puzzle) updatePuzzle(roomInst, dt);
+    checkRoomClear(roomInst);
+
+    updateProjectiles(dt);
+    updateArrows(dt);
+    updateLobbedHazards(dt);
+    updateParticles(dt);
+    updateAmbient(dt, biomeFor(roomInst.meta.dist));
+
+    updateRoomTypePickup(roomInst);
+    updateRoomRewardPickups(roomInst);
 
     if(shake>0) shake = Math.max(0, shake-dt*40);
 
     updateHud();
   }
-

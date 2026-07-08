@@ -1,6 +1,78 @@
 "use strict";
 
   // ---------- Room instance (runtime state) ----------
+
+  // Tries up to `opts.attempts` random top-left positions for a w x h rect
+  // that stay within opts.wallMargin of the room edges, clear of the room
+  // center by opts.centerClearRadius (if given), and that don't overlap
+  // anything in opts.existing or opts.placed once each is inflated by
+  // opts.spacing on every side. Returns the first clear {x,y} found, or
+  // null if every attempt overlapped something. Shared by every
+  // obstacle/wall/hole placement loop below (makeObstacles/
+  // makePartialWalls/makeHoles), which differ only in what object they
+  // build once a clear spot is found.
+  function findClearRect(w, h, opts){
+    opts = opts || {};
+    const wallMargin = opts.wallMargin || 0;
+    const spacing = opts.spacing || 0;
+    const centerClearRadius = opts.centerClearRadius || 0;
+    const existing = opts.existing || [];
+    const placed = opts.placed || [];
+    const attempts = opts.attempts || 20;
+    for(let attempt=0; attempt<attempts; attempt++){
+      const x = randInt(wallMargin, ROOM_W-wallMargin-w);
+      const y = randInt(wallMargin, ROOM_H-wallMargin-h);
+      if(centerClearRadius && dist(x+w/2, y+h/2, ROOM_W/2, ROOM_H/2) < centerClearRadius) continue;
+      const rect = {x,y,w,h};
+      let overlaps = false;
+      for(const o of existing){
+        if(rectsOverlap(rect, {x:o.x-spacing, y:o.y-spacing, w:o.w+spacing*2, h:o.h+spacing*2})){ overlaps = true; break; }
+      }
+      if(!overlaps){
+        for(const o of placed){
+          if(rectsOverlap(rect, {x:o.x-spacing, y:o.y-spacing, w:o.w+spacing*2, h:o.h+spacing*2})){ overlaps = true; break; }
+        }
+      }
+      if(!overlaps) return {x,y};
+    }
+    return null;
+  }
+
+  // Same idea as findClearRect, but for point props (puzzle plates/blocks/
+  // targets) validated by an arbitrary `isValid(x,y)` predicate instead of
+  // a fixed overlap rule -- each puzzle prop type rejects candidate points
+  // differently (min spacing from other plates, staying off the room
+  // center, clear of already-placed blocks, etc). Tries up to `tries`
+  // random points in [xRange]x[yRange] and returns the first one that
+  // passes; if none do, returns the last point tried anyway (matching the
+  // original per-puzzle loops, which accepted a "good enough" placement
+  // rather than failing outright).
+  function randomPointUntil(xRange, yRange, isValid, tries){
+    tries = tries || 30;
+    let x, y, ok = false;
+    for(let attempt=0; attempt<tries && !ok; attempt++){
+      x = randInt(xRange[0], xRange[1]);
+      y = randInt(yRange[0], yRange[1]);
+      ok = isValid(x, y);
+    }
+    return {x, y};
+  }
+
+  // Scatters `count` points within [margin, ROOM_W-margin] x [margin,
+  // ROOM_H-margin], each kept at least `minCenterDist` away from the room
+  // center and at least `minSpacing` away from every point already placed.
+  // Shared by the push puzzle's plates and the detonate puzzle's targets,
+  // which only differ in how many points they need, their spacing, and
+  // what shape they end up wrapped in.
+  function scatterPoints(count, margin, minCenterDist, minSpacing){
+    const points = [];
+    for(let i=0;i<count;i++){
+      points.push(randomPointUntil([margin, ROOM_W-margin], [margin, ROOM_H-margin],
+        (x,y) => dist(x,y,ROOM_W/2,ROOM_H/2) > minCenterDist && points.every(p => dist(x,y,p.x,p.y) > minSpacing)));
+    }
+    return points;
+  }
+
   function makeObstacles(type, biomeKey){
     const obs = [];
     if(type==='start' || type==='item' || type==='secret' || type==='puzzle') return obs;
@@ -8,20 +80,8 @@
     const n = randInt(oc.countMin, oc.countMax);
     for(let i=0;i<n;i++){
       const w = randInt(oc.sizeMin,oc.sizeMax), h = randInt(oc.sizeMin,oc.sizeMax);
-      let placed = false;
-      for(let attempt=0; attempt<oc.placementAttempts && !placed; attempt++){
-        const x = randInt(oc.wallMargin, ROOM_W-oc.wallMargin-w);
-        const y = randInt(oc.wallMargin, ROOM_H-oc.wallMargin-h);
-        const rect = {x,y,w,h};
-        let overlaps = false;
-        for(const o of obs){
-          if(rectsOverlap(rect, {x:o.x-oc.spacing, y:o.y-oc.spacing, w:o.w+oc.spacing*2, h:o.h+oc.spacing*2})){ overlaps = true; break; }
-        }
-        if(!overlaps){
-          obs.push({ x, y, w, h, biome: biomeKey, seed: Math.random()*1000 });
-          placed = true;
-        }
-      }
+      const pos = findClearRect(w, h, { wallMargin: oc.wallMargin, spacing: oc.spacing, placed: obs, attempts: oc.placementAttempts });
+      if(pos) obs.push({ x: pos.x, y: pos.y, w, h, biome: biomeKey, seed: Math.random()*1000 });
     }
     return obs;
   }
@@ -55,22 +115,11 @@
       const len = randInt(wc.lengthMin, wc.lengthMax);
       const w = vertical ? wc.thickness : len;
       const h = vertical ? len : wc.thickness;
-      for(let attempt=0; attempt<wc.placementAttempts; attempt++){
-        const x = randInt(wc.wallMargin, ROOM_W-wc.wallMargin-w);
-        const y = randInt(wc.wallMargin, ROOM_H-wc.wallMargin-h);
-        const rect = {x,y,w,h};
-        if(dist(x+w/2, y+h/2, ROOM_W/2, ROOM_H/2) < wc.centerClearRadius) continue;
-        let overlaps = false;
-        for(const o of existing){
-          if(rectsOverlap(rect, {x:o.x-wc.spacing, y:o.y-wc.spacing, w:o.w+wc.spacing*2, h:o.h+wc.spacing*2})){ overlaps = true; break; }
-        }
-        if(!overlaps){
-          for(const w2 of walls){
-            if(rectsOverlap(rect, {x:w2.x-wc.spacing, y:w2.y-wc.spacing, w:w2.w+wc.spacing*2, h:w2.h+wc.spacing*2})){ overlaps = true; break; }
-          }
-        }
-        if(!overlaps){ walls.push({x,y,w,h,kind:'wall'}); break; }
-      }
+      const pos = findClearRect(w, h, {
+        wallMargin: wc.wallMargin, spacing: wc.spacing, centerClearRadius: wc.centerClearRadius,
+        existing, placed: walls, attempts: wc.placementAttempts
+      });
+      if(pos) walls.push({x: pos.x, y: pos.y, w, h, kind:'wall'});
     }
     return walls;
   }
@@ -99,26 +148,14 @@
         r = randInt(hc.radiusMin, hc.radiusMax);
         w = r*2; h = r*2;
       }
-      for(let attempt=0; attempt<hc.placementAttempts; attempt++){
-        const x = randInt(hc.wallMargin, ROOM_W-hc.wallMargin-w);
-        const y = randInt(hc.wallMargin, ROOM_H-hc.wallMargin-h);
-        const rect = {x,y,w,h};
-        if(dist(x+w/2, y+h/2, ROOM_W/2, ROOM_H/2) < hc.centerClearRadius) continue;
-        let overlaps = false;
-        for(const o of existing){
-          if(rectsOverlap(rect, {x:o.x-hc.spacing, y:o.y-hc.spacing, w:o.w+hc.spacing*2, h:o.h+hc.spacing*2})){ overlaps = true; break; }
-        }
-        if(!overlaps){
-          for(const h2 of holes){
-            if(rectsOverlap(rect, {x:h2.x-hc.spacing, y:h2.y-hc.spacing, w:h2.w+hc.spacing*2, h:h2.h+hc.spacing*2})){ overlaps = true; break; }
-          }
-        }
-        if(!overlaps){
-          holes.push(isRect
-            ? {x,y,w,h,kind:'hole',shape:'rect',seed:Math.random()*1000}
-            : {x,y,w,h,r,kind:'hole',shape:'circle',seed:Math.random()*1000});
-          break;
-        }
+      const pos = findClearRect(w, h, {
+        wallMargin: hc.wallMargin, spacing: hc.spacing, centerClearRadius: hc.centerClearRadius,
+        existing, placed: holes, attempts: hc.placementAttempts
+      });
+      if(pos){
+        holes.push(isRect
+          ? {x:pos.x,y:pos.y,w,h,kind:'hole',shape:'rect',seed:Math.random()*1000}
+          : {x:pos.x,y:pos.y,w,h,r,kind:'hole',shape:'circle',seed:Math.random()*1000});
       }
     }
     return holes;
@@ -295,6 +332,43 @@
     return {x,y};
   }
 
+  // Builds one enemy instance of `enemyType`, spawned clear of `existing`
+  // enemies/obstacles, with hp/speed scaled by `statMult` (the adaptive-
+  // difficulty stat multiplier). `isBoss` gives the boss its own (never
+  // difficulty-scaled) hp/speed and unlocks the boss-only melee/grenade-
+  // barrage state fields. Shared by both the main spawn loop and the
+  // boss-room escort loop below, which build every enemy the same way.
+  function makeEnemy(enemyType, distVal, statMult, existing, obstacles, ec, isBoss){
+    const isMoving = MOVING_ENEMY_TYPES.has(enemyType);
+    const stats = statsForEnemyType(enemyType);
+    const {x, y} = findEnemySpawnPos(existing, stats.radius, ec, obstacles);
+    const hp = isBoss ? stats.hp : Math.max(1, Math.round(stats.hp * statMult));
+    const baseSpeed = isBoss ? ec.boss.speed : (isMoving ? chaserSpeedFor(enemyType, distVal) : 0);
+    const enemy = {
+      type: enemyType,
+      x, y,
+      hp,
+      maxHp: hp,
+      r: stats.radius,
+      speed: baseSpeed * statMult,
+      shootCd: initialShootCd(enemyType, ec),
+      hitFlash: 0,
+      armed: false,      // bomberChaser: whether it has started its detonation fuse
+      fuse: 0,           // bomberChaser: seconds left until it detonates
+      chainSwing: 0,      // chainChaser: seconds left in its current chain-lash visual/hit window
+      chainAngle: 0       // chainChaser: locked-in strike direction, swept +45/-45deg around it
+    };
+    if(isBoss){
+      enemy.meleeState = 'idle';       // boss: 'idle' | 'windup' | 'active'
+      enemy.meleeTimer = 0;            // boss: seconds left in the current melee sub-state
+      enemy.meleeCd = 0.6;             // boss: cooldown before the next swing may start
+      enemy.grenadeCd = ec.boss.grenadeInitialDelay; // boss: seconds until the next grenade barrage may start
+      enemy.grenadeBarrageLeft = 0;    // boss: grenades still owed in the current barrage
+      enemy.grenadeBarrageTimer = 0;   // boss: seconds until the next lob in the barrage
+    }
+    return enemy;
+  }
+
   // `factor` is the current adaptive-difficulty skill factor (see the
   // `skill` state and CONFIG.difficulty). 1 = baseline/unscaled behavior;
   // below 1 eases enemy count/stats/type odds off, above 1 ramps them up.
@@ -320,56 +394,15 @@
     const spawnWeights = dc.enabled ? scaledSpawnWeights(ec.spawnWeights, factor) : ec.spawnWeights;
     const escortWeights = dc.enabled ? scaledSpawnWeights(ec.bossEscortSpawnWeights, factor) : ec.bossEscortSpawnWeights;
     for(let i=0;i<count;i++){
-      const isBoss = isBossRoom;
-      const enemyType = isBoss ? 'boss' : pickWeightedEnemyType(spawnWeights);
-      const isMoving = MOVING_ENEMY_TYPES.has(enemyType);
-      const stats = statsForEnemyType(enemyType);
-      const {x, y} = findEnemySpawnPos(enemies, stats.radius, ec, obstacles);
-      const hp = isBoss ? stats.hp : Math.max(1, Math.round(stats.hp * statMult));
-      const baseSpeed = isBoss ? ec.boss.speed : (isMoving ? chaserSpeedFor(enemyType, dist) : 0);
-      enemies.push({
-        type: enemyType,
-        x, y,
-        hp,
-        maxHp: hp,
-        r: stats.radius,
-        speed: baseSpeed * statMult,
-        shootCd: initialShootCd(enemyType, ec),
-        hitFlash: 0,
-        armed: false,      // bomberChaser: whether it has started its detonation fuse
-        fuse: 0,           // bomberChaser: seconds left until it detonates
-        chainSwing: 0,      // chainChaser: seconds left in its current chain-lash visual/hit window
-        chainAngle: 0,      // chainChaser: locked-in strike direction, swept +45/-45deg around it
-        meleeState: 'idle', // boss: 'idle' | 'windup' | 'active'
-        meleeTimer: 0,       // boss: seconds left in the current melee sub-state
-        meleeCd: 0.6,        // boss: cooldown before the next swing may start
-        grenadeCd: isBoss ? ec.boss.grenadeInitialDelay : 0,   // boss: seconds until the next grenade barrage may start
-        grenadeBarrageLeft: 0,         // boss: grenades still owed in the current barrage
-        grenadeBarrageTimer: 0         // boss: seconds until the next lob in the barrage
-      });
+      const enemyType = isBossRoom ? 'boss' : pickWeightedEnemyType(spawnWeights);
+      enemies.push(makeEnemy(enemyType, dist, statMult, enemies, obstacles, ec, isBossRoom));
     }
     // boss fights get escort minions now that arenas are bigger
     if(isBossRoom){
       const escorts = randInt(ec.bossEscortsMin, ec.bossEscortsMax);
       for(let i=0;i<escorts;i++){
         const enemyType = pickWeightedEnemyType(escortWeights);
-        const isMoving = MOVING_ENEMY_TYPES.has(enemyType);
-        const stats = statsForEnemyType(enemyType);
-        const {x, y} = findEnemySpawnPos(enemies, stats.radius, ec, obstacles);
-        const hp = Math.max(1, Math.round(stats.hp * statMult));
-        enemies.push({
-          type: enemyType,
-          x, y,
-          hp, maxHp: hp,
-          r: stats.radius,
-          speed: (isMoving ? chaserSpeedFor(enemyType, dist) : 0) * statMult,
-          shootCd: initialShootCd(enemyType, ec),
-          hitFlash: 0,
-          armed: false,
-          fuse: 0,
-          chainSwing: 0,
-          chainAngle: 0
-        });
+        enemies.push(makeEnemy(enemyType, dist, statMult, enemies, obstacles, ec, false));
       }
     }
     return enemies;
@@ -418,35 +451,22 @@
   function buildPushPuzzle(){
     const pc = CONFIG.puzzles.push;
     const margin = pc.pushMargin;
-    const plates = [];
-    for(let i=0;i<pc.blockCount;i++){
-      let x, y, tries = 0, ok = false;
-      do {
-        x = randInt(margin, ROOM_W-margin);
-        y = randInt(margin, ROOM_H-margin);
-        ok = dist(x,y,ROOM_W/2,ROOM_H/2) > 70 && plates.every(p => dist(x,y,p.x,p.y) > pc.plateRadius*3);
-        tries++;
-      } while(!ok && tries<30);
-      plates.push({x, y, r: pc.plateRadius});
-    }
+    const plates = scatterPoints(pc.blockCount, margin, 70, pc.plateRadius*3)
+      .map(pos => ({x: pos.x, y: pos.y, r: pc.plateRadius}));
     const blocks = [];
     const w = pc.blockSize, h = pc.blockSize;
     for(let i=0;i<pc.blockCount;i++){
-      let x, y, tries = 0, ok = false;
-      do {
-        x = randInt(margin, ROOM_W-margin-w);
-        y = randInt(margin, ROOM_H-margin-h);
-        const cx = x+w/2, cy = y+h/2;
-        ok = plates.every(p => dist(cx,cy,p.x,p.y) > pc.plateRadius*2);
-        if(ok){
+      const pos = randomPointUntil([margin, ROOM_W-margin-w], [margin, ROOM_H-margin-h],
+        (x,y) => {
+          const cx = x+w/2, cy = y+h/2;
+          if(!plates.every(p => dist(cx,cy,p.x,p.y) > pc.plateRadius*2)) return false;
           const rect = {x,y,w,h};
           for(const b of blocks){
-            if(rectsOverlap(rect, {x:b.x-12,y:b.y-12,w:b.w+24,h:b.h+24})){ ok = false; break; }
+            if(rectsOverlap(rect, {x:b.x-12,y:b.y-12,w:b.w+24,h:b.h+24})) return false;
           }
-        }
-        tries++;
-      } while(!ok && tries<30);
-      blocks.push({x, y, w, h, onPlate:false});
+          return true;
+        });
+      blocks.push({x: pos.x, y: pos.y, w, h, onPlate:false});
     }
     return { kind:'push', blocks, plates, solved:false };
   }
@@ -480,17 +500,8 @@
   function buildDetonatePuzzle(){
     const dc = CONFIG.puzzles.detonate;
     const margin = dc.margin;
-    const targets = [];
-    for(let i=0;i<dc.targetCount;i++){
-      let x, y, tries = 0, ok = false;
-      do {
-        x = randInt(margin, ROOM_W-margin);
-        y = randInt(margin, ROOM_H-margin);
-        ok = dist(x,y,ROOM_W/2,ROOM_H/2) > 70 && targets.every(o => dist(x,y,o.x,o.y) > dc.targetRadius*3);
-        tries++;
-      } while(!ok && tries<30);
-      targets.push({x, y, r: dc.targetRadius, destroyed:false});
-    }
+    const targets = scatterPoints(dc.targetCount, margin, 70, dc.targetRadius*3)
+      .map(pos => ({x: pos.x, y: pos.y, r: dc.targetRadius, destroyed:false}));
     return { kind:'detonate', targets, solved:false };
   }
 

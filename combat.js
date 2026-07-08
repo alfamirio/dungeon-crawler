@@ -50,6 +50,48 @@
     SFX.shieldBlock();
   }
 
+  // Shared "an attack landed on this enemy" response: damage, a brief
+  // hit-flash, a small knockback along the unit direction (kdx,kdy), a
+  // particle burst (boss gets its own gold-chest color regardless of
+  // `color`), a hit sound, and a bump to hitStop. Used by both the sword
+  // swing (multiple enemies per swing, knockback from the player's facing)
+  // and arrows (one enemy per arrow, knockback from the arrow's own flight
+  // direction) in update.js, which otherwise differ only in their overlap
+  // test and damage/knockback numbers.
+  function applyEnemyHit(en, damage, kdx, kdy, knockback, dt, color){
+    en.hp -= damage;
+    en.hitFlash = 0.15;
+    en.x += kdx*knockback*dt*6;
+    en.y += kdy*knockback*dt*6;
+    spawnParticles(en.x, en.y, en.type==='boss' ? COLORS.chest : color, 8);
+    SFX.enemyHit();
+    hitStop = Math.max(hitStop, CONFIG.effects.attackHitStop);
+  }
+
+  // Checks whether an attack landed on the current room's switch pedestals
+  // or snipe target, and applies the matching puzzle response (pressSwitch/
+  // hitSnipeTarget) the moment it does. `overlapsFn(x, y, r)` tests the
+  // attack against a circular puzzle prop at (x,y) with radius r -- the
+  // sword swing passes a rect-hitbox-overlap test, arrows pass a
+  // point-distance test (see update.js). Returns true the instant
+  // something was hit, so an arrow caller knows to consume itself; a
+  // switch hit stops at the first pedestal found, matching the original
+  // per-weapon loops.
+  function checkPuzzleHit(pinst, overlapsFn){
+    const pz = pinst.puzzle;
+    if(!pz) return false;
+    if(pz.kind==='switch'){
+      for(let si=0; si<pz.switches.length; si++){
+        const sw = pz.switches[si];
+        if(overlapsFn(sw.x, sw.y, sw.r)){ pressSwitch(pinst, si); return true; }
+      }
+    } else if(pz.kind==='snipe' && !pz.solved){
+      const tgt = pz.target;
+      if(overlapsFn(tgt.x, tgt.y, tgt.r)){ hitSnipeTarget(pinst); return true; }
+    }
+    return false;
+  }
+
   function damagePlayer(amount){
     if(player.godmode) return;
     if(player.invuln>0) return;

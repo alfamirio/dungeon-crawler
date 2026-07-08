@@ -56,27 +56,58 @@
     ctx.restore();
   }
 
-  function drawFloorPattern(biome){
-    if(biome.key==='stone'){
-      // regular grid of stone slabs
-      for(let gx=0; gx<=ROOM_W; gx+=38){
-        ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,ROOM_H); ctx.stroke();
+  // ---- Floor pattern building blocks, shared by several biomes ----
+
+  // Plain axis-aligned grid (stone/graveyard/neon/factory all use this,
+  // just at different spacings, with neon/factory layering extra fx on top).
+  function drawGridLines(spacing){
+    for(let gx=0; gx<=ROOM_W; gx+=spacing){
+      ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,ROOM_H); ctx.stroke();
+    }
+    for(let gy=0; gy<=ROOM_H; gy+=spacing){
+      ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(ROOM_W,gy); ctx.stroke();
+    }
+  }
+
+  // Horizontal rows of a sine wave (roots' organic ripples and desert's
+  // dune ripples are the same shape, just with different spacing/wave fn).
+  function drawWavyRows(startY, rowSpacing, xStep, waveFn){
+    for(let gy=startY; gy<ROOM_H; gy+=rowSpacing){
+      ctx.beginPath();
+      for(let gx=0; gx<=ROOM_W; gx+=xStep){
+        const yy = gy + waveFn(gx,gy);
+        if(gx===0) ctx.moveTo(gx,yy); else ctx.lineTo(gx,yy);
       }
-      for(let gy=0; gy<=ROOM_H; gy+=38){
-        ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(ROOM_W,gy); ctx.stroke();
+      ctx.stroke();
+    }
+  }
+
+  // Randomly-seeded branching veins (lava's cracks and alien's
+  // bioluminescent veins are the same shape at different seeds/colors).
+  function drawBranchingVeins(seed, count, segs, step, color, alpha){
+    const rnd = mulberry32(seed);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = alpha;
+    for(let i=0;i<count;i++){
+      let x = rnd()*ROOM_W, y = rnd()*ROOM_H;
+      ctx.beginPath(); ctx.moveTo(x,y);
+      for(let s=0;s<segs;s++){
+        x += (rnd()-0.5)*step; y += (rnd()-0.5)*step;
+        ctx.lineTo(x,y);
       }
-    } else if(biome.key==='roots'){
-      // organic wavy lines, like roots running through the floor
-      for(let gy=20; gy<ROOM_H; gy+=52){
-        ctx.beginPath();
-        for(let gx=0; gx<=ROOM_W; gx+=20){
-          const yy = gy + Math.sin((gx+gy)*0.05)*10;
-          if(gx===0) ctx.moveTo(gx,yy); else ctx.lineTo(gx,yy);
-        }
-        ctx.stroke();
-      }
-    } else if(biome.key==='ice'){
-      // diagonal ice cracks, like fractured glass
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  const FLOOR_PATTERNS = {
+    // regular grid of stone slabs
+    stone: () => drawGridLines(38),
+    // organic wavy lines, like roots running through the floor
+    roots: () => drawWavyRows(20, 52, 20, (gx,gy) => Math.sin((gx+gy)*0.05)*10),
+    // diagonal ice cracks, like fractured glass
+    ice: () => {
       const rnd = mulberry32(1234);
       for(let i=0;i<14;i++){
         const x1 = rnd()*ROOM_W, y1 = rnd()*ROOM_H;
@@ -86,65 +117,25 @@
         ctx.lineTo(x1+Math.cos(ang)*len, y1+Math.sin(ang)*len);
         ctx.stroke();
       }
-    } else if(biome.key==='lava'){
-      // irregular glowing veins, like lava cracks
-      const rnd = mulberry32(5678);
-      ctx.save();
-      ctx.strokeStyle = biome.glow;
-      ctx.globalAlpha = 0.25;
-      for(let i=0;i<8;i++){
-        let x = rnd()*ROOM_W, y = rnd()*ROOM_H;
-        ctx.beginPath(); ctx.moveTo(x,y);
-        for(let s=0;s<5;s++){
-          x += (rnd()-0.5)*70; y += (rnd()-0.5)*70;
-          ctx.lineTo(x,y);
-        }
-        ctx.stroke();
-      }
-      ctx.restore();
-    } else if(biome.key==='desert'){
-      // wavy dune ripples across the sand
-      for(let gy=10; gy<ROOM_H; gy+=34){
-        ctx.beginPath();
-        for(let gx=0; gx<=ROOM_W; gx+=24){
-          const yy = gy + Math.sin(gx*0.04 + gy*0.3)*6;
-          if(gx===0) ctx.moveTo(gx,yy); else ctx.lineTo(gx,yy);
-        }
-        ctx.stroke();
-      }
-    } else if(biome.key==='cave'){
-      // damp patchy blotches on rough cave floor
+    },
+    // irregular glowing veins, like lava cracks
+    lava: (biome) => drawBranchingVeins(5678, 8, 5, 70, biome.glow, 0.25),
+    // wavy dune ripples across the sand
+    desert: () => drawWavyRows(10, 34, 24, (gx,gy) => Math.sin(gx*0.04 + gy*0.3)*6),
+    // damp patchy blotches on rough cave floor
+    cave: () => {
       const rnd = mulberry32(9001);
       for(let i=0;i<10;i++){
         const x = rnd()*ROOM_W, y = rnd()*ROOM_H, r = 14+rnd()*20;
         ctx.beginPath(); ctx.ellipse(x,y,r,r*0.6,rnd()*Math.PI,0,Math.PI*2); ctx.stroke();
       }
-    } else if(biome.key==='graveyard'){
-      // cracked stone tiles, wider grid than the stone biome
-      for(let gx=0; gx<=ROOM_W; gx+=54){
-        ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,ROOM_H); ctx.stroke();
-      }
-      for(let gy=0; gy<=ROOM_H; gy+=54){
-        ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(ROOM_W,gy); ctx.stroke();
-      }
-    } else if(biome.key==='alien'){
-      // branching bioluminescent veins
-      const rnd = mulberry32(4242);
-      ctx.save();
-      ctx.strokeStyle = biome.glow;
-      ctx.globalAlpha = 0.22;
-      for(let i=0;i<10;i++){
-        let x = rnd()*ROOM_W, y = rnd()*ROOM_H;
-        ctx.beginPath(); ctx.moveTo(x,y);
-        for(let s=0;s<6;s++){
-          x += (rnd()-0.5)*50; y += (rnd()-0.5)*50;
-          ctx.lineTo(x,y);
-        }
-        ctx.stroke();
-      }
-      ctx.restore();
-    } else if(biome.key==='island'){
-      // gentle tide ripples radiating across the sand
+    },
+    // cracked stone tiles, wider grid than the stone biome
+    graveyard: () => drawGridLines(54),
+    // branching bioluminescent veins
+    alien: (biome) => drawBranchingVeins(4242, 10, 6, 50, biome.glow, 0.22),
+    // gentle tide ripples radiating across the sand
+    island: () => {
       const rnd = mulberry32(3131);
       for(let i=0;i<6;i++){
         const cx = rnd()*ROOM_W, cy = rnd()*ROOM_H;
@@ -152,35 +143,28 @@
           ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
         }
       }
-    } else if(biome.key==='temple'){
-      // ornate diagonal mosaic tiling
+    },
+    // ornate diagonal mosaic tiling
+    temple: () => {
       for(let gx=-ROOM_H; gx<=ROOM_W; gx+=46){
         ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx+ROOM_H,ROOM_H); ctx.stroke();
       }
       for(let gx=0; gx<=ROOM_W+ROOM_H; gx+=46){
         ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx-ROOM_H,ROOM_H); ctx.stroke();
       }
-    } else if(biome.key==='neon'){
-      // glowing cyber grid
+    },
+    // glowing cyber grid
+    neon: (biome) => {
       ctx.save();
       ctx.strokeStyle = biome.glow;
       ctx.globalAlpha = 0.18;
       ctx.shadowColor = biome.glow; ctx.shadowBlur = 6;
-      for(let gx=0; gx<=ROOM_W; gx+=44){
-        ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,ROOM_H); ctx.stroke();
-      }
-      for(let gy=0; gy<=ROOM_H; gy+=44){
-        ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(ROOM_W,gy); ctx.stroke();
-      }
+      drawGridLines(44);
       ctx.restore();
-    } else if(biome.key==='factory'){
-      // riveted metal floor plates
-      for(let gx=0; gx<=ROOM_W; gx+=48){
-        ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,ROOM_H); ctx.stroke();
-      }
-      for(let gy=0; gy<=ROOM_H; gy+=48){
-        ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(ROOM_W,gy); ctx.stroke();
-      }
+    },
+    // riveted metal floor plates
+    factory: () => {
+      drawGridLines(48);
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       for(let gx=24; gx<ROOM_W; gx+=48){
@@ -190,6 +174,11 @@
       }
       ctx.restore();
     }
+  };
+
+  function drawFloorPattern(biome){
+    const pattern = FLOOR_PATTERNS[biome.key];
+    if(pattern) pattern(biome);
   }
 
   // deterministic PRNG for stable per-room patterns (don't change every frame)
@@ -223,6 +212,22 @@
     ctx.restore();
   }
 
+  // A single jagged rock/masonry chunk, used to ring the edge of both hole
+  // shapes below. Caller positions/rotates via translate+rotate beforehand.
+  function drawRubbleChunk(size){
+    ctx.beginPath();
+    ctx.moveTo(-size*0.5,-size*0.35);
+    ctx.lineTo(size*0.55,-size*0.3);
+    ctx.lineTo(size*0.4,size*0.4);
+    ctx.lineTo(-size*0.45,size*0.35);
+    ctx.closePath();
+    ctx.fillStyle = COLORS.obstacle;
+    ctx.fill();
+    ctx.strokeStyle = COLORS.obstacleEdge;
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+  }
+
   // Floor hole: a ring of loose rock/masonry rubble framing the edge (drawn
   // first, at the seeded stable positions makeHoles() gave the hole -- same
   // trick as the lava obstacle's jagged silhouette), then a dark void with
@@ -236,21 +241,10 @@
     for(let i=0;i<chunkCount;i++){
       const a = (i/chunkCount)*Math.PI*2 + rnd()*0.2;
       const rr = r - 3 + rnd()*11; // straddles the rim: some chunks crumbling inward, some sitting proud outside
-      const size = 7+rnd()*8;
       ctx.save();
       ctx.translate(cx+Math.cos(a)*rr, cy+Math.sin(a)*rr);
       ctx.rotate(a + rnd()*0.6 - 0.3);
-      ctx.fillStyle = COLORS.obstacle;
-      ctx.beginPath();
-      ctx.moveTo(-size*0.5,-size*0.35);
-      ctx.lineTo(size*0.55,-size*0.3);
-      ctx.lineTo(size*0.4,size*0.4);
-      ctx.lineTo(-size*0.45,size*0.35);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = COLORS.obstacleEdge;
-      ctx.lineWidth = 1.3;
-      ctx.stroke();
+      drawRubbleChunk(7+rnd()*8);
       ctx.restore();
     }
     const grad = ctx.createRadialGradient(cx,cy,r*0.15, cx,cy,r);
@@ -285,22 +279,10 @@
       else { px = o.x; py = o.y+o.h-(p-o.w*2-o.h); }
       const jitter = 6;
       px += (rnd()-0.5)*jitter*2; py += (rnd()-0.5)*jitter*2;
-      const size = 7+rnd()*8;
-      const a = rnd()*Math.PI*2;
       ctx.save();
       ctx.translate(px, py);
-      ctx.rotate(a);
-      ctx.fillStyle = COLORS.obstacle;
-      ctx.beginPath();
-      ctx.moveTo(-size*0.5,-size*0.35);
-      ctx.lineTo(size*0.55,-size*0.3);
-      ctx.lineTo(size*0.4,size*0.4);
-      ctx.lineTo(-size*0.45,size*0.35);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = COLORS.obstacleEdge;
-      ctx.lineWidth = 1.3;
-      ctx.stroke();
+      ctx.rotate(rnd()*Math.PI*2);
+      drawRubbleChunk(7+rnd()*8);
       ctx.restore();
     }
     const grad = ctx.createRadialGradient(cx,cy,Math.min(o.w,o.h)*0.1, cx,cy,Math.max(o.w,o.h)*0.7);
@@ -694,6 +676,17 @@
     ctx.globalAlpha = 1;
   }
 
+  // Gentle vertical bob shared by every floating pickup (chests, hearts,
+  // bomb drops, skill items), each with its own speed/amplitude.
+  function bobOffset(t, speed, amp){ return Math.sin(t*speed)*amp; }
+
+  // Pulsing glow shared by the same set of pickups (all pulse at the same
+  // 3rad/s rate, just with different base blur/amplitude per pickup type).
+  function pulseGlow(color, t, base, amp){
+    ctx.shadowColor = color;
+    ctx.shadowBlur = base + Math.sin(t*3)*amp;
+  }
+
   function drawRoom(){
     const inst = curInst();
     const biome = biomeFor(inst.meta.dist);
@@ -740,11 +733,11 @@
     const meta = inst.meta;
     if((meta.type==='item'||meta.type==='key'||meta.type==='secret') && !inst.chestTaken){
       const t = performance.now()/1000;
-      const cx = ROOM_W/2, cy = ROOM_H/2 + Math.sin(t*2)*4;
+      const cx = ROOM_W/2, cy = ROOM_H/2 + bobOffset(t, 2, 4);
       ctx.save();
       ctx.translate(cx,cy);
       const chestColor = meta.type==='key' ? COLORS.chest : (meta.type==='secret' ? '#7fd1a8' : COLORS.chest);
-      ctx.shadowColor = chestColor; ctx.shadowBlur = 18 + Math.sin(t*3)*6;
+      pulseGlow(chestColor, t, 18, 6);
       ctx.fillStyle = chestColor;
       ctx.beginPath();
       ctx.moveTo(0,-18); ctx.lineTo(18,0); ctx.lineTo(0,18); ctx.lineTo(-18,0); ctx.closePath();
@@ -759,10 +752,10 @@
     if(inst.bombDrop && !inst.bombDrop.taken){
       const t = performance.now()/1000;
       const bd = inst.bombDrop;
-      const by = bd.y + Math.sin(t*2.2)*4;
+      const by = bd.y + bobOffset(t, 2.2, 4);
       ctx.save();
       ctx.translate(bd.x, by);
-      ctx.shadowColor = COLORS.chest; ctx.shadowBlur = 16 + Math.sin(t*3)*5;
+      pulseGlow(COLORS.chest, t, 16, 5);
       ctx.strokeStyle = '#00000066'; ctx.lineWidth = 1.5;
       ctx.fillStyle = COLORS.chestBoxWood;
       ctx.beginPath();
@@ -786,10 +779,10 @@
     if(inst.heartDrop && !inst.heartDrop.taken){
       const t = performance.now()/1000;
       const hd = inst.heartDrop;
-      const hy = hd.y + Math.sin(t*2.2)*4;
+      const hy = hd.y + bobOffset(t, 2.2, 4);
       ctx.save();
       ctx.translate(hd.x, hy);
-      ctx.shadowColor = COLORS.boss; ctx.shadowBlur = 16 + Math.sin(t*3)*5;
+      pulseGlow(COLORS.boss, t, 16, 5);
       ctx.fillStyle = COLORS.boss;
       ctx.beginPath();
       ctx.moveTo(0, 13);
@@ -807,11 +800,12 @@
     if(inst.skillItem && !inst.skillTaken){
       const t = performance.now()/1000;
       const sp = inst.skillPos;
-      const sy = sp.y + Math.sin(t*2.2)*4;
+      const sy = sp.y + bobOffset(t, 2.2, 4);
       ctx.save();
       ctx.translate(sp.x, sy);
+      const pickupGlow = (color) => pulseGlow(color, t, 16, 5);
       if(inst.skillItem==='bow'){
-        ctx.shadowColor = COLORS.bow; ctx.shadowBlur = 16 + Math.sin(t*3)*5;
+        pickupGlow(COLORS.bow);
         ctx.strokeStyle = COLORS.bow;
         ctx.lineWidth = 3.5;
         ctx.lineCap = 'round';
@@ -824,7 +818,7 @@
         ctx.moveTo(2, -12); ctx.lineTo(2, 12);
         ctx.stroke();
       } else if(inst.skillItem==='bombBag'){
-        ctx.shadowColor = COLORS.bombBag; ctx.shadowBlur = 16 + Math.sin(t*3)*5;
+        pickupGlow(COLORS.bombBag);
         ctx.fillStyle = COLORS.bombBag;
         ctx.beginPath();
         ctx.moveTo(-10,-2);
@@ -839,7 +833,7 @@
         ctx.fillStyle = '#3a2a18';
         ctx.beginPath(); ctx.arc(0,-9,3,0,Math.PI*2); ctx.fill();
       } else if(inst.skillItem==='dash'){
-        ctx.shadowColor = COLORS.dash; ctx.shadowBlur = 16 + Math.sin(t*3)*5;
+        pickupGlow(COLORS.dash);
         ctx.strokeStyle = COLORS.dash;
         ctx.lineWidth = 3;
         ctx.lineCap = 'round';
@@ -853,7 +847,7 @@
           ctx.stroke();
         }
       } else if(inst.skillItem==='jump'){
-        ctx.shadowColor = COLORS.jump; ctx.shadowBlur = 16 + Math.sin(t*3)*5;
+        pickupGlow(COLORS.jump);
         ctx.strokeStyle = COLORS.jump;
         ctx.lineWidth = 3;
         ctx.lineCap = 'round';
@@ -884,6 +878,17 @@
   // pushable blocks; switch rooms get a ring of pedestals that light up
   // during the memorize phase and flash green/red on a correct/wrong
   // repeat, plus a short instruction line while unsolved.
+  // Shared "instruction line" shown near the top of the room while an
+  // unsolved puzzle needs explaining (switch/detonate/snipe/rush all use it).
+  function drawPuzzleHint(text){
+    ctx.save();
+    ctx.font = '600 15px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(217,220,227,0.75)';
+    ctx.fillText(text, ROOM_W/2, 56);
+    ctx.restore();
+  }
+
   function drawPuzzle(inst){
     const pz = inst.puzzle;
     const t = performance.now()/1000;
@@ -956,13 +961,8 @@
         ctx.restore();
       }
       if(!pz.solved){
-        ctx.save();
-        ctx.font = '600 15px "Segoe UI", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(217,220,227,0.75)';
         const label = pz.phase==='showing' ? 'MEMORIZE THE SEQUENCE' : 'REPEAT IT \u2014 ATTACK IN ORDER';
-        ctx.fillText(label, ROOM_W/2, 56);
-        ctx.restore();
+        drawPuzzleHint(label);
       }
     } else if(pz.kind==='detonate'){
       for(const tgt of pz.targets){
@@ -992,12 +992,7 @@
       }
       if(!pz.solved){
         const remaining = pz.targets.filter(t=>!t.destroyed).length;
-        ctx.save();
-        ctx.font = '600 15px "Segoe UI", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(217,220,227,0.75)';
-        ctx.fillText(`BOMB THE CRACKED URNS \u2014 ${remaining} LEFT`, ROOM_W/2, 56);
-        ctx.restore();
+        drawPuzzleHint(`BOMB THE CRACKED URNS \u2014 ${remaining} LEFT`);
       }
     } else if(pz.kind==='snipe'){
       const tgt = pz.target;
@@ -1024,12 +1019,7 @@
       ctx.beginPath(); ctx.arc(0,0,tgt.r,0,Math.PI*2); ctx.stroke();
       ctx.restore();
       if(!pz.solved){
-        ctx.save();
-        ctx.font = '600 15px "Segoe UI", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(217,220,227,0.75)';
-        ctx.fillText('SHOOT THE TARGET ACROSS THE MOAT', ROOM_W/2, 56);
-        ctx.restore();
+        drawPuzzleHint('SHOOT THE TARGET ACROSS THE MOAT');
       }
     } else if(pz.kind==='rush'){
       for(const p of pz.plates){
@@ -1062,12 +1052,7 @@
         ctx.restore();
       }
       if(!pz.solved){
-        ctx.save();
-        ctx.font = '600 15px "Segoe UI", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(217,220,227,0.75)';
-        ctx.fillText('DASH BETWEEN PLATES BEFORE THEY FADE', ROOM_W/2, 56);
-        ctx.restore();
+        drawPuzzleHint('DASH BETWEEN PLATES BEFORE THEY FADE');
       }
     }
   }
