@@ -10,6 +10,7 @@
   // ambient effects/minimap for the room just entered.
   function enterRoom(){
     const inst = curInst();
+    if(!inst.visited) stats.roomsVisited++;
     inst.visited = true;
     if(!inst.enemiesBuilt){
       inst.enemies = makeEnemies(inst.meta.type, inst.meta.dist, skill.factor);
@@ -60,6 +61,50 @@
       onCollect(drop);
     }
   }
+
+  // DEBUG: kills every enemy in the current room. Shared by the K hotkey
+  // and the sidebar "Clear room" button.
+  function debugKillRoom(){
+    const inst = curInst();
+    for(const en of inst.enemies){
+      spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:'#ffffff', 14);
+    }
+    inst.enemies.length = 0;
+  }
+
+  // DEBUG: sets invincibility on/off. Shared by the I hotkey and the
+  // sidebar "Invincibility" toggle.
+  function debugSetGodmode(v){
+    player.godmode = v;
+  }
+
+  // DEBUG: grants the bow + bomb bag and sets infinite ammo on/off (topping
+  // bombs/arrows back up to max when turning it on). Shared by the L
+  // hotkey and the sidebar "Infinite ammo" toggle.
+  function debugSetInfiniteAmmo(v){
+    player.hasBow = true;
+    player.hasBombBag = true;
+    player.infiniteAmmo = v;
+    if(v){
+      player.bombs = player.maxBombs;
+      player.arrows = player.maxArrows;
+    }
+  }
+
+  // ---------- Sidebar wiring (stats display lives in updateHud(); this
+  // just connects the config toggles/buttons to the same debug helpers
+  // the hotkeys use) ----------
+  document.getElementById('toggleMusic').addEventListener('change', e => {
+    SFX.setMuted(!e.target.checked);
+  });
+  document.getElementById('toggleGod').addEventListener('change', e => {
+    debugSetGodmode(e.target.checked);
+  });
+  document.getElementById('toggleAmmo').addEventListener('change', e => {
+    debugSetInfiniteAmmo(e.target.checked);
+  });
+  document.getElementById('btnClearRoom').addEventListener('click', debugKillRoom);
+  document.getElementById('btnWarpBoss').addEventListener('click', warpToBossRoom);
 
   function update(dt){
     if(flash>0) flash = Math.max(0, flash-dt*4);
@@ -152,6 +197,7 @@
       player.bowDraw = CONFIG.player.bowDrawDuration;
       if(!player.infiniteAmmo) player.arrows--;
       SFX.bowFire();
+      stats.arrowsFired++;
       const ac = CONFIG.combat;
       arrows.push({
         x: player.x + player.dir.x*player.w*0.4,
@@ -165,6 +211,7 @@
     if(keys['KeyB'] && player.hasBombBag && (player.infiniteAmmo || player.bombs>0) && !player._bombLock){
       if(!player.infiniteAmmo) player.bombs--;
       SFX.bombPlace();
+      stats.bombsPlaced++;
       bombs.push({x:player.x, y:player.y, fuse:CONFIG.combat.bombFuseTime});
       player._bombLock = true;
     }
@@ -173,31 +220,21 @@
     // DEBUG: K key kills all enemies in the current room
     if(keys['KeyK'] && !player._debugKillLock){
       player._debugKillLock = true;
-      const inst = curInst();
-      for(const en of inst.enemies){
-        spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:'#ffffff', 14);
-      }
-      inst.enemies.length = 0;
+      debugKillRoom();
     }
     if(!keys['KeyK']) player._debugKillLock = false;
 
     // DEBUG: I key toggles invincibility
     if(keys['KeyI'] && !player._debugGodLock){
       player._debugGodLock = true;
-      player.godmode = !player.godmode;
+      debugSetGodmode(!player.godmode);
     }
     if(!keys['KeyI']) player._debugGodLock = false;
 
     // DEBUG: L key grants the bow + bomb bag and toggles infinite bombs/arrows
     if(keys['KeyL'] && !player._debugAmmoLock){
       player._debugAmmoLock = true;
-      player.hasBow = true;
-      player.hasBombBag = true;
-      player.infiniteAmmo = !player.infiniteAmmo;
-      if(player.infiniteAmmo){
-        player.bombs = player.maxBombs;
-        player.arrows = player.maxArrows;
-      }
+      debugSetInfiniteAmmo(!player.infiniteAmmo);
     }
     if(!keys['KeyL']) player._debugAmmoLock = false;
 
@@ -247,6 +284,7 @@
       if(en.hp<=0){
         spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:'#ffffff', 16);
         SFX.enemyDeath();
+        stats.enemiesKilled++;
         roomInst.enemies.splice(i,1);
         continue;
       }

@@ -19,6 +19,7 @@
   // ---------- Game state ----------
   let dungeon, roomInstances, current, player, bombs, projectiles, particles, thrownBombs, grenades, arrows;
   let skill; // adaptive-difficulty tracking state, see CONFIG.difficulty
+  let stats; // run stats shown in the sidebar (rooms visited, kills, etc.)
   let keys = {};
   let gameOver = false, gameWon = false;
   let shake = 0;
@@ -33,6 +34,7 @@
     }
     current = {x:0,y:0};
     roomInstances.get(roomKey(0,0)).visited = true;
+    stats = { roomsVisited: 1, enemiesKilled: 0, bombsPlaced: 0, arrowsFired: 0 };
 
     // Place the bow and bomb-bag skill pickups in two distinct normal
     // rooms, so each run finds them in different spots. These are grabbable

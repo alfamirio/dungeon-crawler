@@ -24,6 +24,22 @@
     document.getElementById('arrowCount').textContent = player.infiniteAmmo ? '∞' : (player.arrows + '/' + player.maxArrows);
     document.getElementById('keyWrap').style.display = player.hasKey ? 'flex' : 'none';
     document.getElementById('godWrap').style.display = player.godmode ? 'flex' : 'none';
+
+    // ---- sidebar: run stats ----
+    document.getElementById('statRooms').textContent = stats.roomsVisited;
+    document.getElementById('statKills').textContent = stats.enemiesKilled;
+    document.getElementById('statBombs').textContent = stats.bombsPlaced;
+    document.getElementById('statArrows').textContent = stats.arrowsFired;
+    const inst = curInst();
+    document.getElementById('statDepth').textContent = inst.meta.dist;
+    document.getElementById('statBiome').textContent = biomeFor(inst.meta.dist).name;
+    document.getElementById('statDifficulty').textContent = skill.factor.toFixed(2);
+
+    // ---- sidebar: keep config toggles in sync with hotkey-driven state
+    // (setting .checked directly doesn't fire 'change', so no feedback loop) ----
+    document.getElementById('toggleMusic').checked = !SFX.isMuted();
+    document.getElementById('toggleGod').checked = player.godmode;
+    document.getElementById('toggleAmmo').checked = player.infiniteAmmo;
   }
 
   function buildMinimap(){

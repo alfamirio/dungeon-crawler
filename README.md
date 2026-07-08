@@ -45,6 +45,14 @@ The game logic is split into 9 scripts, loaded by `index.html` in dependency ord
 
 Because everything shares one global scope, load order in `index.html` matters — each file assumes the ones before it have already run.
 
+## Sidebar
+
+To the left of the canvas, a sidebar shows:
+- **Run stats** — rooms visited, enemies defeated, bombs used, arrows fired, current depth, biome, and the live adaptive-difficulty factor.
+- **Config** — toggle switches for music, invincibility, and infinite ammo, plus "Clear room" and "Warp to boss" buttons.
+
+The sidebar controls call the exact same functions as the K/I/L/Y hotkeys (`debugKillRoom()`, `debugSetGodmode()`, `debugSetInfiniteAmmo()`, `warpToBossRoom()` in `update.js`), and their toggle states stay in sync no matter which input method (keyboard or sidebar) was used last — all hotkeys still work as before.
+
 ## Audio
 
 All sound is synthesized live via the Web Audio API in `audio.js` — there are no `.mp3`/`.wav` files to manage. Sounds are intentionally subtle: a low master gain, short soft-edged envelopes, and per-sound throttling so rapid repeated events (a flurry of hits, several turret shots at once) don't stack into a wall of noise. Press **M** to mute/unmute at any time.

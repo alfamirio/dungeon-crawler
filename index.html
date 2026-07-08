@@ -9,37 +9,77 @@
 <body>
 <div id="app">
   <div id="title">Generated dungeon &mdash; initial prototype</div>
-  <div id="stage">
-    <canvas id="game" width="1200" height="900"></canvas>
-    <div id="hud">
-      <div>
-        <div id="hearts"></div>
-        <div id="resources">
-          <div class="res-item" id="bombWrap" style="display:none;">
-            <svg width="16" height="16"><circle cx="8" cy="8" r="7" fill="#111" stroke="var(--accent2)" stroke-width="2"/></svg>
-            <span id="bombCount">0</span>
-          </div>
-          <div class="res-item" id="arrowWrap" style="display:none;">
-            <svg width="16" height="16"><line x1="3" y1="13" x2="13" y2="3" stroke="var(--accent2)" stroke-width="2"/><polygon points="13,3 8,4 12,8" fill="var(--accent2)"/></svg>
-            <span id="arrowCount">0</span>
-          </div>
-          <div class="res-item" id="keyWrap" style="display:none;">
-            <svg width="16" height="16"><circle cx="6" cy="6" r="4" fill="none" stroke="var(--accent2)" stroke-width="2"/><rect x="9" y="5" width="6" height="2.4" fill="var(--accent2)"/></svg>
-            <span>key</span>
-          </div>
-          <div class="res-item" id="godWrap" style="display:none;">
-            <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="#f4d35e" stroke-width="2" stroke-dasharray="3 2"/></svg>
-            <span style="color:#f4d35e; letter-spacing:1px; text-transform:uppercase; font-size:11px;">invincible</span>
-          </div>
-        </div>
+  <div id="gameRow">
+    <div id="sidebar">
+      <div class="panel-section">
+        <h3>Run Stats</h3>
+        <div class="stat-row"><span>Rooms visited</span><span id="statRooms">0</span></div>
+        <div class="stat-row"><span>Enemies defeated</span><span id="statKills">0</span></div>
+        <div class="stat-row"><span>Bombs used</span><span id="statBombs">0</span></div>
+        <div class="stat-row"><span>Arrows fired</span><span id="statArrows">0</span></div>
+        <div class="stat-row"><span>Depth</span><span id="statDepth">0</span></div>
+        <div class="stat-row"><span>Biome</span><span id="statBiome">&mdash;</span></div>
+        <div class="stat-row"><span>Difficulty</span><span id="statDifficulty">&mdash;</span></div>
       </div>
-      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
-        <div id="biomeLabel" style="font-size:12px; font-weight:600; letter-spacing:2.5px; text-transform:uppercase; padding:3px 8px; background:rgba(8,10,16,.75); border:1px solid rgba(255,255,255,0.09); border-radius:4px; text-shadow:0 1px 4px rgba(0,0,0,.6);"></div>
-        <div id="minimap"></div>
+      <div class="panel-section">
+        <h3>Config</h3>
+        <div class="toggle-row">
+          <span>Music</span>
+          <label class="switch">
+            <input type="checkbox" id="toggleMusic" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <span>Invincibility</span>
+          <label class="switch">
+            <input type="checkbox" id="toggleGod">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <span>Infinite ammo</span>
+          <label class="switch">
+            <input type="checkbox" id="toggleAmmo">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <button class="sidebar-btn" id="btnClearRoom">Clear room</button>
+        <button class="sidebar-btn" id="btnWarpBoss">Warp to boss</button>
       </div>
     </div>
-    <div id="msg"><div id="msgText"></div><span id="msgSub"></span></div>
-    <button id="restart">Retry</button>
+    <div id="stage">
+      <canvas id="game" width="1200" height="900"></canvas>
+      <div id="hud">
+        <div>
+          <div id="hearts"></div>
+          <div id="resources">
+            <div class="res-item" id="bombWrap" style="display:none;">
+              <svg width="16" height="16"><circle cx="8" cy="8" r="7" fill="#111" stroke="var(--accent2)" stroke-width="2"/></svg>
+              <span id="bombCount">0</span>
+            </div>
+            <div class="res-item" id="arrowWrap" style="display:none;">
+              <svg width="16" height="16"><line x1="3" y1="13" x2="13" y2="3" stroke="var(--accent2)" stroke-width="2"/><polygon points="13,3 8,4 12,8" fill="var(--accent2)"/></svg>
+              <span id="arrowCount">0</span>
+            </div>
+            <div class="res-item" id="keyWrap" style="display:none;">
+              <svg width="16" height="16"><circle cx="6" cy="6" r="4" fill="none" stroke="var(--accent2)" stroke-width="2"/><rect x="9" y="5" width="6" height="2.4" fill="var(--accent2)"/></svg>
+              <span>key</span>
+            </div>
+            <div class="res-item" id="godWrap" style="display:none;">
+              <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="#f4d35e" stroke-width="2" stroke-dasharray="3 2"/></svg>
+              <span style="color:#f4d35e; letter-spacing:1px; text-transform:uppercase; font-size:11px;">invincible</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+          <div id="biomeLabel" style="font-size:12px; font-weight:600; letter-spacing:2.5px; text-transform:uppercase; padding:3px 8px; background:rgba(8,10,16,.75); border:1px solid rgba(255,255,255,0.09); border-radius:4px; text-shadow:0 1px 4px rgba(0,0,0,.6);"></div>
+          <div id="minimap"></div>
+        </div>
+      </div>
+      <div id="msg"><div id="msgText"></div><span id="msgSub"></span></div>
+      <button id="restart">Retry</button>
+    </div>
   </div>
   <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; F: fire bow &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; M: mute audio &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; L: debug bow + bomb bag + infinite ammo &nbsp;&middot;&nbsp; Y: debug warp to boss</span></div>
 </div>
