@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dungeon // dungeon crawler (Phaser 4)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/4.2.0/phaser.min.js"></script>
+<style>
+  :root{
+    --bg: #12141c;
+    --panel: #1a1e2a;
+    --wall: #3a4256;
+    --wall-locked: #8a2b2b;
+    --wall-cracked: #55606e;
+    --wall-sealed: #c97a2b;
+    --floor: #20242f;
+    --floor-line: #262b39;
+    --accent: #4fd1c5;
+    --accent2: #f4d35e;
+    --danger: #e2555a;
+    --text: #d9dce3;
+    --muted: #6b7280;
+  }
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; height:100%; background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif; overflow:hidden;
+    -webkit-user-select:none; user-select:none;
+  }
+  #app{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    height:100%; gap:10px; padding:10px;
+  }
+  #title{
+    font-size:13px; letter-spacing:3px; text-transform:uppercase; color:var(--muted);
+  }
+  #stage{
+    position:relative;
+    box-shadow: 0 0 0 2px #000, 0 10px 40px rgba(0,0,0,.6);
+    border-radius:6px; overflow:hidden;
+    width: min(94vw, 82vh * (1200/900));
+    aspect-ratio: 1200 / 900;
+  }
+  #game{
+    position:absolute; inset:0; width:100%; height:100%; background: var(--bg);
+  }
+  #game canvas{ display:block; width:100% !important; height:100% !important; }
+  #hud{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:10px 14px; pointer-events:none;
+    font-size:14px; z-index: 2;
+  }
+  #hearts{ display:flex; gap:6px; }
+  .heart{ width:16px; height:16px; }
+  #resources{ display:flex; gap:16px; align-items:center; margin-top:4px; }
+  .res-item{ display:flex; align-items:center; gap:6px; }
+  #minimap{
+    display:grid; gap:2px; background: rgba(0,0,0,.35); padding:6px; border-radius:4px;
+  }
+  .mm-cell{ width:10px; height:10px; border-radius:2px; background:#232838; }
+  .mm-cell.visited{ background: var(--wall); }
+  .mm-cell.current{ background: var(--accent); }
+  .mm-cell.boss{ background: var(--danger); }
+  .mm-cell.item{ background: var(--accent2); }
+  #msg{
+    position:absolute; left:50%; top:40%; transform:translate(-50%,-50%);
+    text-align:center; font-size:22px; letter-spacing:2px; text-transform:uppercase;
+    color: var(--text); text-shadow: 0 2px 12px rgba(0,0,0,.8); display:none;
+    pointer-events:none; z-index:2;
+  }
+  #msg span{ display:block; font-size:13px; color:var(--muted); margin-top:8px; letter-spacing:1px; }
+  #hint{
+    font-size:12px; color: var(--muted); letter-spacing:1px;
+  }
+  #restart{
+    pointer-events:auto; margin-top:14px; padding:8px 18px; background:var(--accent);
+    border:none; border-radius:4px; color:#0b1410; font-weight:600; letter-spacing:1px;
+    cursor:pointer; display:none; text-transform:uppercase; font-size:12px; z-index:2; position:relative;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="title">Generated dungeon &mdash; Phaser 4 port</div>
+  <div id="stage">
+    <div id="game"></div>
+    <div id="hud">
+      <div>
+        <div id="hearts"></div>
+        <div id="resources">
+          <div class="res-item">
+            <svg width="16" height="16"><circle cx="8" cy="8" r="7" fill="#111" stroke="var(--accent2)" stroke-width="2"/></svg>
+            <span id="bombCount">0</span>
+          </div>
+          <div class="res-item" id="keyWrap" style="display:none;">
+            <svg width="16" height="16"><circle cx="6" cy="6" r="4" fill="none" stroke="var(--accent2)" stroke-width="2"/><rect x="9" y="5" width="6" height="2.4" fill="var(--accent2)"/></svg>
+            <span>key</span>
+          </div>
+          <div class="res-item" id="godWrap" style="display:none;">
+            <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="#f4d35e" stroke-width="2" stroke-dasharray="3 2"/></svg>
+            <span style="color:#f4d35e; letter-spacing:1px; text-transform:uppercase; font-size:11px;">invincible</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+        <div id="biomeLabel" style="font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--muted);"></div>
+        <div id="minimap"></div>
+      </div>
+    </div>
+    <div id="msg"><div id="msgText"></div><span id="msgSub"></span></div>
+    <button id="restart">Retry</button>
+  </div>
+  <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; Y: debug warp to boss</span></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ======================================================================
+  // GAME CONFIG — every tunable gameplay/visual number lives here.
+  // Unchanged from the canvas prototype; nothing here is Phaser-specific.
+  // ======================================================================
+  const CONFIG = {
+    canvas: {
+      width: 1200,
+      height: 900,
+      wallThickness: 39,
+      doorGap: 165
+    },
+    dungeon: {
+      roomCount: 13
+    },
+    player: {
+      width: 40,
+      height: 40,
+      speed: 190,
+      startHp: 6,
+      maxHp: 6,
+      startBombs: 3,
+      maxBombs: 6,
+      invulnDuration: 1.0,
+      attackCooldown: 0.35,
+      attackDuration: 0.15,
+      attackWidth: 48,
+      attackHeight: 48,
+      eyeForwardOffset: 9,
+      eyeSpacing: 9,
+      eyeRadius: 7.3,
+      pupilRadius: 3.5,
+      pupilLead: 2.4,
+      hurtEyeDuration: 0.35,
+      hurtEyeScale: 1.45,
+      happyEyeDuration: 0.6,
+      tailLength: 17,
+      tailWidth: 6.5,
+      tailTipRadius: 4.3,
+      tailWagAmplitude: 8,
+      tailWagSpeedMoving: 9,
+      tailWagSpeedIdle: 3,
+      shieldSpeedMultiplier: 0.55,
+      shieldBlockDot: 0.3,
+      shieldOffset: 29,
+      shieldWidth: 13,
+      shieldHeight: 35,
+      swordLength: 45,
+      swordWidth: 8,
+      swordPivotOffset: 11,
+      swordSwingStartDeg: 45,
+      swordSwingEndDeg: -45
+    },
+    combat: {
+      attackDamage: 1,
+      attackKnockback: 120,
+      bombFuseTime: 1.4,
+      bombRadius: 90,
+      bombDamageToEnemies: 3,
+      bombDamageToPlayer: 1,
+      projectileSpeed: 160,
+      projectileRadius: 6,
+      projectileDamage: 1
+    },
+    enemies: {
+      baseCount: 2,
+      maxCount: 6,
+      countPerDist: 2,
+      turretChance: 0.35,
+      spawnMargin: 80,
+      bossEscortsMin: 1,
+      bossEscortsMax: 2,
+      bossEscortTurretChance: 0.4,
+      chaser: { hp: 2, radius: 18, speedBase: 60, speedPerDist: 4, contactDamage: 1 },
+      turret: { hp: 2, radius: 30, shootCooldown: 1.8, contactDamage: 1 },
+      boss:   { hp: 10, radius: 34, speed: 70, contactDamage: 2 }
+    },
+    obstacles: {
+      countMin: 3, countMax: 6, sizeMin: 40, sizeMax: 70,
+      wallMargin: 60, spacing: 18, placementAttempts: 24
+    },
+    decor: {
+      cornerInset: 46,
+      floorCountMin: 4, floorCountMax: 7,
+      treasureFloorCount: 4, treasureClearRadius: 140,
+      obstacleMargin: 24, placementAttempts: 16,
+      sizeMin: 0.7, sizeMax: 1.3
+    },
+    rooms: {
+      entryMargin: 50,
+      chestPickupRadius: 30,
+      crackedWallProximity: 60
+    },
+    items: {
+      maxBombsCap: 8, bombRefillAmount: 2, maxBombsIncrement: 1, secretHealAmount: 2
+    },
+    effects: {
+      // shake/hitStop values are fed straight into Phaser's camera shake and
+      // a short "freeze frame" respectively, mirroring the feel of the
+      // original hand-rolled versions.
+      hitShake: 220, hitShakeMag: 0.012, hitStop: 0.06,
+      bombShake: 260, bombShakeMag: 0.018, bombHitStop: 0.07,
+      attackHitStop: 0.05
+    }
+  };
+
+  const CANVAS_W = CONFIG.canvas.width, CANVAS_H = CONFIG.canvas.height;
+  const WALL = CONFIG.canvas.wallThickness;
+  const ROOM_W = CANVAS_W - WALL * 2;
+  const ROOM_H = CANVAS_H - WALL * 2;
+  const DOOR_GAP = CONFIG.canvas.doorGap;
+  const GRID_ROOMS = CONFIG.dungeon.roomCount;
+
+  function hex(s){ return parseInt(s.replace('#', ''), 16); }
+
+  const COLORS = {
+    wall: hex('#3a4256'), wallLocked: hex('#8a2b2b'), wallCracked: hex('#55606e'), wallSealed: hex('#c97a2b'),
+    player: hex('#4fd1c5'), playerTail: hex('#3aa89e'),
+    sword: hex('#eef2f7'), swordEdge: hex('#aab4c4'),
+    eyeWhite: hex('#ffffff'), eyePupil: hex('#12141c'),
+    chaser: hex('#e2555a'), turret: hex('#caa23a'), projectile: hex('#ffdd57'),
+    bomb: hex('#111318'), bombFuse: hex('#ffb020'),
+    chest: hex('#f4d35e'), chestSecret: hex('#7fd1a8'),
+    obstacleEdge: hex('#3a4256'), white: hex('#ffffff'), godmode: hex('#f4d35e')
+  };
+
+  // Biomes by depth: each stretch of rooms changes the palette (stone/roots/ice/lava).
+  const BIOMES = [
+    { key: 'stone', name: 'Stone', floor: hex('#20242f'), floorLine: hex('#262b39'), wall: hex('#3a4256'), glow: hex('#4fd1c5'), particle: hex('#4fd1c5'), obstacle: hex('#2a2f3d') },
+    { key: 'roots', name: 'Roots', floor: hex('#1c2620'), floorLine: hex('#243228'), wall: hex('#33513f'), glow: hex('#7ad14f'), particle: hex('#7ad14f'), obstacle: hex('#243a2c') },
+    { key: 'ice',   name: 'Ice',   floor: hex('#161f2c'), floorLine: hex('#20304a'), wall: hex('#33506e'), glow: hex('#7fd4ff'), particle: hex('#bfe9ff'), obstacle: hex('#1c2c40') },
+    { key: 'lava',  name: 'Lava',  floor: hex('#241816'), floorLine: hex('#32201c'), wall: hex('#5a2e28'), glow: hex('#ff8a4d'), particle: hex('#ff8a4d'), obstacle: hex('#361f19') }
+  ];
+  function biomeFor(distVal, maxDist){
+    const step = Math.max(1, (maxDist + 1) / BIOMES.length);
+    return BIOMES[Math.min(BIOMES.length - 1, Math.floor(distVal / step))];
+  }
+
+  // ---------- Utils (pure, engine-agnostic — unchanged from the prototype) ----------
+  function rectsOverlap(a, b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+  function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+  function dist(x1, y1, x2, y2){ return Math.hypot(x2 - x1, y2 - y1); }
+  function randInt(a, b){ return a + Math.floor(Math.random() * (b - a + 1)); }
+  function choice(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
+  function mulberry32(seed){
+    let a = seed;
+    return function(){
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = (t + Math.imul(t ^ t >>> 7, 61 | t)) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  const DIRS = [
+    { dx: 0, dy: -1, name: 'N', opp: 'S' },
+    { dx: 0, dy: 1,  name: 'S', opp: 'N' },
+    { dx: 1, dy: 0,  name: 'E', opp: 'W' },
+    { dx: -1, dy: 0, name: 'W', opp: 'E' }
+  ];
+  function roomKey(x, y){ return x + ',' + y; }
+  function doorKey(x1, y1, x2, y2){
+    if(x1 > x2 || (x1 === x2 && y1 > y2)){ const t1 = x1, t2 = y1; x1 = x2; y1 = y2; x2 = t1; y2 = t2; }
+    return x1 + ',' + y1 + '|' + x2 + ',' + y2;
+  }
+
+  // ---------- Dungeon generation (unchanged algorithm) ----------
+  function generateDungeon(){
+    const rooms = new Map();
+    const doors = new Map();
+    rooms.set(roomKey(0, 0), { x: 0, y: 0, type: 'start', dist: 0 });
+
+    const frontier = [{ x: 0, y: 0 }];
+    let created = 1;
+    while(created < GRID_ROOMS && frontier.length){
+      const from = frontier[randInt(0, frontier.length - 1)];
+      const dirsShuffled = [...DIRS].sort(() => Math.random() - 0.5);
+      let placed = false;
+      for(const d of dirsShuffled){
+        const nx = from.x + d.dx, ny = from.y + d.dy;
+        const k = roomKey(nx, ny);
+        if(rooms.has(k)) continue;
+        if(Math.random() < 0.55) continue;
+        rooms.set(k, { x: nx, y: ny, type: 'normal', dist: (rooms.get(roomKey(from.x, from.y)).dist) + 1 });
+        doors.set(doorKey(from.x, from.y, nx, ny), { state: 'open' });
+        frontier.push({ x: nx, y: ny });
+        created++;
+        placed = true;
+        break;
+      }
+      if(!placed){
+        const idx = frontier.indexOf(from);
+        if(idx >= 0) frontier.splice(idx, 1);
+      }
+    }
+
+    if(rooms.size < 4){
+      let last = { x: 0, y: 0 };
+      for(let i = 1; i < 5; i++){
+        const nx = last.x + 1, ny = last.y;
+        const k = roomKey(nx, ny);
+        if(!rooms.has(k)){
+          rooms.set(k, { x: nx, y: ny, type: 'normal', dist: i });
+          doors.set(doorKey(last.x, last.y, nx, ny), { state: 'open' });
+        }
+        last = { x: nx, y: ny };
+      }
+    }
+
+    function neighborsOf(x, y){
+      const res = [];
+      for(const d of DIRS){
+        const nx = x + d.dx, ny = y + d.dy;
+        if(rooms.has(roomKey(nx, ny)) && doors.has(doorKey(x, y, nx, ny))) res.push({ x: nx, y: ny, dir: d });
+      }
+      return res;
+    }
+
+    const deadEnds = [];
+    for(const [, r] of rooms){
+      if(r.type === 'start') continue;
+      if(neighborsOf(r.x, r.y).length === 1) deadEnds.push(r);
+    }
+    deadEnds.sort((a, b) => b.dist - a.dist);
+
+    let bossRoom = deadEnds[0];
+    if(!bossRoom){
+      let farthest = null;
+      for(const [, r] of rooms){ if(r.type === 'start') continue; if(!farthest || r.dist > farthest.dist) farthest = r; }
+      bossRoom = farthest;
+    }
+    bossRoom.type = 'boss';
+
+    let itemRoom = deadEnds.find(r => r !== bossRoom);
+    if(!itemRoom){
+      for(const [, r] of rooms){ if(r.type === 'normal'){ itemRoom = r; break; } }
+    }
+    if(itemRoom) itemRoom.type = 'item';
+
+    const candidates = [...rooms.values()].filter(r => r.type === 'normal' && r.dist >= 1);
+    let keyRoom = candidates.length ? choice(candidates) : null;
+    if(keyRoom) keyRoom.type = 'key';
+
+    const bossNeighbors = neighborsOf(bossRoom.x, bossRoom.y);
+    if(bossNeighbors.length){
+      const bn = bossNeighbors[0];
+      const dk = doorKey(bossRoom.x, bossRoom.y, bn.x, bn.y);
+      doors.get(dk).state = 'locked';
+    }
+
+    const allRoomsArr = [...rooms.values()];
+    let secretRoom = null;
+    for(let attempt = 0; attempt < 20 && !secretRoom; attempt++){
+      const base = choice(allRoomsArr);
+      const dirsShuffled = [...DIRS].sort(() => Math.random() - 0.5);
+      for(const d of dirsShuffled){
+        const nx = base.x + d.dx, ny = base.y + d.dy;
+        const k = roomKey(nx, ny);
+        if(rooms.has(k)) continue;
+        secretRoom = { x: nx, y: ny, type: 'secret', dist: base.dist + 1 };
+        rooms.set(k, secretRoom);
+        doors.set(doorKey(base.x, base.y, nx, ny), { state: 'cracked' });
+        break;
+      }
+    }
+
+    let maxDist = 0;
+    for(const [, r] of rooms){ if(r.dist > maxDist) maxDist = r.dist; }
+
+    return { rooms, doors, startCoord: { x: 0, y: 0 }, bossRoom, itemRoom, keyRoom, secretRoom, maxDist };
+  }
+
+  function makeObstacles(type, biomeKey){
+    const obs = [];
+    if(type === 'start' || type === 'item' || type === 'secret') return obs;
+    const oc = CONFIG.obstacles;
+    const n = randInt(oc.countMin, oc.countMax);
+    for(let i = 0; i < n; i++){
+      const w = randInt(oc.sizeMin, oc.sizeMax), h = randInt(oc.sizeMin, oc.sizeMax);
+      let placed = false;
+      for(let attempt = 0; attempt < oc.placementAttempts && !placed; attempt++){
+        const x = randInt(oc.wallMargin, ROOM_W - oc.wallMargin - w);
+        const y = randInt(oc.wallMargin, ROOM_H - oc.wallMargin - h);
+        const rect = { x, y, w, h };
+        let overlaps = false;
+        for(const o of obs){
+          if(rectsOverlap(rect, { x: o.x - oc.spacing, y: o.y - oc.spacing, w: o.w + oc.spacing * 2, h: o.h + oc.spacing * 2 })){ overlaps = true; break; }
+        }
+        if(!overlaps){
+          obs.push({ x, y, w, h, biome: biomeKey, seed: Math.random() * 1000 });
+          placed = true;
+        }
+      }
+    }
+    return obs;
+  }
+
+  function makeEnemies(type, distv){
+    const enemies = [];
+    if(type === 'start' || type === 'item' || type === 'secret') return enemies;
+    const ec = CONFIG.enemies;
+    const isBossRoom = type === 'boss';
+    const count = isBossRoom ? 1 : Math.min(ec.baseCount + Math.floor(distv / ec.countPerDist), ec.maxCount);
+    for(let i = 0; i < count; i++){
+      const isBoss = isBossRoom;
+      const isTurret = !isBoss && Math.random() < ec.turretChance;
+      const x = randInt(ec.spawnMargin, ROOM_W - ec.spawnMargin);
+      const y = randInt(ec.spawnMargin, ROOM_H - ec.spawnMargin);
+      const stats = isBoss ? ec.boss : (isTurret ? ec.turret : ec.chaser);
+      enemies.push({
+        type: isBoss ? 'boss' : (isTurret ? 'turret' : 'chaser'),
+        x, y, hp: stats.hp, maxHp: stats.hp, r: stats.radius,
+        speed: isBoss ? ec.boss.speed : (isTurret ? 0 : ec.chaser.speedBase + distv * ec.chaser.speedPerDist),
+        shootCd: 0, hitFlash: 0
+      });
+    }
+    if(isBossRoom){
+      const escorts = randInt(ec.bossEscortsMin, ec.bossEscortsMax);
+      for(let i = 0; i < escorts; i++){
+        const isTurret = Math.random() < ec.bossEscortTurretChance;
+        const x = randInt(ec.spawnMargin, ROOM_W - ec.spawnMargin);
+        const y = randInt(ec.spawnMargin, ROOM_H - ec.spawnMargin);
+        const stats = isTurret ? ec.turret : ec.chaser;
+        enemies.push({
+          type: isTurret ? 'turret' : 'chaser', x, y,
+          hp: stats.hp, maxHp: stats.hp, r: stats.radius,
+          speed: isTurret ? 0 : ec.chaser.speedBase + distv * ec.chaser.speedPerDist,
+          shootCd: 0, hitFlash: 0
+        });
+      }
+    }
+    return enemies;
+  }
+
+  // Decorative, non-colliding scenery. Simplified relative to the canvas
+  // prototype: instead of a bespoke hand-drawn fixture per biome (torch /
+  // vine / icicle / ember, each with its own bezier-heavy draw routine),
+  // corner and floor decor are now simple biome-tinted glowing markers.
+  // Same data shape, much less bespoke render code — matches Phaser's
+  // usual "keep primitives simple, lean on color/motion" style.
+  function makeDecor(type, biomeKey, obstacles){
+    const dc = CONFIG.decor;
+    const decor = [];
+    const inset = dc.cornerInset;
+    const corners = [
+      { x: inset, y: inset }, { x: ROOM_W - inset, y: inset },
+      { x: inset, y: ROOM_H - inset }, { x: ROOM_W - inset, y: ROOM_H - inset }
+    ];
+    for(const c of corners) decor.push({ kind: 'corner', biome: biomeKey, x: c.x, y: c.y, seed: Math.random() * 1000 });
+
+    const isTreasureRoom = (type === 'item' || type === 'key' || type === 'secret');
+    const count = isTreasureRoom ? dc.treasureFloorCount : randInt(dc.floorCountMin, dc.floorCountMax);
+    for(let i = 0; i < count; i++){
+      let x, y, ok = false;
+      for(let attempt = 0; attempt < dc.placementAttempts && !ok; attempt++){
+        x = randInt(70, ROOM_W - 70);
+        y = randInt(70, ROOM_H - 70);
+        ok = true;
+        if(isTreasureRoom && dist(x, y, ROOM_W / 2, ROOM_H / 2) < dc.treasureClearRadius) ok = false;
+        for(const o of obstacles){
+          if(x > o.x - dc.obstacleMargin && x < o.x + o.w + dc.obstacleMargin && y > o.y - dc.obstacleMargin && y < o.y + o.h + dc.obstacleMargin){ ok = false; break; }
+        }
+      }
+      if(ok) decor.push({ kind: 'floor', biome: biomeKey, x, y, size: dc.sizeMin + Math.random() * (dc.sizeMax - dc.sizeMin), seed: Math.random() * 1000 });
+    }
+    return decor;
+  }
+
+  function buildRoomInstance(meta){
+    const obstacles = makeObstacles(meta.type, 'x');
+    return {
+      meta, obstacles,
+      decor: makeDecor(meta.type, 'x', obstacles),
+      enemies: makeEnemies(meta.type, meta.dist),
+      cleared: (meta.type === 'start' || meta.type === 'item' || meta.type === 'secret'),
+      visited: false, chestTaken: false
+    };
+  }
+
+  // ======================================================================
+  // Phaser Scene — everything above is plain data/logic; everything below
+  // is the Phaser-specific wiring (scene lifecycle, input, camera fx,
+  // rendering). The HUD (hearts/bombs/minimap/messages) stays as a plain
+  // DOM overlay exactly like the original, since Phaser has no reason to
+  // own that layer.
+  // ======================================================================
+  class DungeonScene extends Phaser.Scene {
+    constructor(){ super('dungeon'); }
+
+    create(){
+      this.cameras.main.setBackgroundColor(0x000000);
+
+      // A small round texture used by the particle burst emitter for hits,
+      // explosions, pickups, etc. — replaces the prototype's hand-rolled
+      // per-particle physics with Phaser's native particle system.
+      const pg = this.make.graphics({ x: 0, y: 0 }, false);
+      pg.fillStyle(0xffffff, 1);
+      pg.fillCircle(4, 4, 4);
+      pg.generateTexture('particle', 8, 8);
+      pg.destroy();
+
+      this.burstEmitter = this.add.particles(0, 0, 'particle', {
+        lifespan: { min: 250, max: 650 },
+        speed: { min: 40, max: 180 },
+        scale: { start: 1, end: 0 },
+        alpha: { start: 1, end: 0 },
+        gravityY: 160,
+        emitting: false
+      });
+
+      // Everything gameplay-visible lives in room-local coordinates
+      // (0..ROOM_W, 0..ROOM_H). A container offset by the wall thickness
+      // stands in for the prototype's ctx.translate(WALL, WALL).
+      this.world = this.add.container(WALL, WALL);
+      this.g = this.add.graphics();
+      this.world.add([this.g, this.burstEmitter]);
+
+      // Static vignette drawn once in screen space (not shaken/offset).
+      const vg = this.add.graphics();
+      const vgSteps = 10;
+      for(let i = 0; i < vgSteps; i++){
+        const t = i / (vgSteps - 1);
+        vg.fillStyle(0x000000, t * 0.45 * 0.15);
+        vg.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      }
+      vg.setDepth(5);
+
+      this.keys = this.input.keyboard.addKeys({
+        up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT',
+        w: 'W', a: 'A', s: 'S', d: 'D',
+        space: 'SPACE', shift: 'SHIFT',
+        bomb: 'B', dbgKill: 'K', dbgGod: 'I', dbgWarp: 'Y'
+      });
+
+      document.getElementById('restart').addEventListener('click', () => this.newGame());
+
+      this.newGame();
+    }
+
+    newGame(){
+      this.dungeon = generateDungeon();
+      this.roomInstances = new Map();
+      for(const [k, meta] of this.dungeon.rooms) this.roomInstances.set(k, buildRoomInstance(meta));
+      this.current = { x: 0, y: 0 };
+      this.roomInstances.get(roomKey(0, 0)).visited = true;
+
+      this.player = {
+        x: ROOM_W / 2, y: ROOM_H / 2,
+        w: CONFIG.player.width, h: CONFIG.player.height,
+        speed: CONFIG.player.speed, dir: { x: 0, y: 1 },
+        hp: CONFIG.player.startHp, maxHp: CONFIG.player.maxHp,
+        bombs: CONFIG.player.startBombs, maxBombs: CONFIG.player.maxBombs,
+        hasKey: false, invuln: 0, attackCd: 0, attacking: 0,
+        godmode: false, hasShield: true, shielding: false,
+        hurtTimer: 0, happyTimer: 0
+      };
+      this.bombs = [];
+      this.projectiles = [];
+      this.ambientParticles = [];
+      this.gameOver = false;
+      this.gameWon = false;
+      this.hitStop = 0;
+      this._bombLock = false;
+
+      document.getElementById('msg').style.display = 'none';
+      document.getElementById('restart').style.display = 'none';
+
+      this.seedAmbient(this.biomeNow());
+      this.buildMinimap();
+      this.updateHud();
+    }
+
+    curInst(){ return this.roomInstances.get(roomKey(this.current.x, this.current.y)); }
+    biomeNow(){ return biomeFor(this.curInst().meta.dist, this.dungeon.maxDist); }
+    getDoorState(x1, y1, x2, y2){ const d = this.dungeon.doors.get(doorKey(x1, y1, x2, y2)); return d ? d.state : null; }
+    isDoorPassable(x1, y1, x2, y2){
+      const inst = this.curInst();
+      if(!inst.cleared) return false;
+      return this.getDoorState(x1, y1, x2, y2) === 'open';
+    }
+
+    burst(x, y, color, count){
+      this.burstEmitter.setPosition(x, y);
+      this.burstEmitter.setConfig({ tint: color });
+      this.burstEmitter.explode(count);
+    }
+
+    // ---------- Combat ----------
+    playerAttackHitbox(){
+      const p = this.player;
+      const w = CONFIG.player.attackWidth, h = CONFIG.player.attackHeight;
+      let x = p.x, y = p.y;
+      if(p.dir.x > 0) x += p.w / 2;
+      else if(p.dir.x < 0) x -= p.w / 2 + w;
+      else x -= w / 2;
+      if(p.dir.y > 0) y += p.h / 2;
+      else if(p.dir.y < 0) y -= p.h / 2 + h;
+      else if(p.dir.x !== 0) y -= h / 2;
+      return { x, y, w, h };
+    }
+
+    isShieldBlocking(sx, sy){
+      const p = this.player;
+      if(!p.shielding) return false;
+      const dx = sx - p.x, dy = sy - p.y;
+      const d = Math.hypot(dx, dy);
+      if(d <= 0) return false;
+      const dot = (dx / d) * p.dir.x + (dy / d) * p.dir.y;
+      return dot >= CONFIG.player.shieldBlockDot;
+    }
+
+    damagePlayer(amount){
+      const p = this.player;
+      if(p.godmode) return;
+      if(p.invuln > 0) return;
+      p.hp = Math.max(0, p.hp - amount);
+      p.invuln = CONFIG.player.invulnDuration;
+      p.hurtTimer = CONFIG.player.hurtEyeDuration;
+      const e = CONFIG.effects;
+      this.cameras.main.shake(e.hitShake, e.hitShakeMag);
+      this.cameras.main.flash(180, 226, 85, 90);
+      this.hitStop = e.hitStop;
+      if(p.hp <= 0){ this.gameOver = true; this.showMessage('You have fallen', 'press retry'); }
+    }
+
+    tryOpenLockedDoor(nx, ny){
+      const p = this.player;
+      if(p.hasKey){
+        const d = this.dungeon.doors.get(doorKey(this.current.x, this.current.y, nx, ny));
+        if(d && d.state === 'locked'){
+          d.state = 'open';
+          p.hasKey = false;
+          this.burst(p.x, p.y, COLORS.chest, 20);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    tryBreakCrackedNear(bx, by){
+      for(const d of DIRS){
+        const nx = this.current.x + d.dx, ny = this.current.y + d.dy;
+        const door = this.dungeon.doors.get(doorKey(this.current.x, this.current.y, nx, ny));
+        if(door && door.state === 'cracked'){
+          let near = false;
+          if(d.name === 'N' && by < CONFIG.rooms.crackedWallProximity) near = true;
+          if(d.name === 'S' && by > ROOM_H - CONFIG.rooms.crackedWallProximity) near = true;
+          if(d.name === 'E' && bx > ROOM_W - CONFIG.rooms.crackedWallProximity) near = true;
+          if(d.name === 'W' && bx < CONFIG.rooms.crackedWallProximity) near = true;
+          if(near){
+            door.state = 'open';
+            this.burst(bx, by, COLORS.wallCracked, 24);
+          }
+        }
+      }
+    }
+
+    moveToRoom(nx, ny, entrySide){
+      this.current = { x: nx, y: ny };
+      const inst = this.curInst();
+      inst.visited = true;
+      this.bombs = [];
+      this.projectiles = [];
+      const margin = CONFIG.rooms.entryMargin;
+      const p = this.player;
+      if(entrySide === 'N'){ p.x = ROOM_W / 2; p.y = ROOM_H - margin; }
+      else if(entrySide === 'S'){ p.x = ROOM_W / 2; p.y = margin; }
+      else if(entrySide === 'E'){ p.x = margin; p.y = ROOM_H / 2; }
+      else if(entrySide === 'W'){ p.x = ROOM_W - margin; p.y = ROOM_H / 2; }
+      this.seedAmbient(this.biomeNow());
+      this.buildMinimap();
+    }
+
+    warpToBossRoom(){
+      const bossMeta = [...this.dungeon.rooms.values()].find(m => m.type === 'boss');
+      if(!bossMeta) return;
+      this.current = { x: bossMeta.x, y: bossMeta.y };
+      const inst = this.curInst();
+      inst.visited = true;
+      this.bombs = [];
+      this.projectiles = [];
+      this.player.x = ROOM_W / 2;
+      this.player.y = ROOM_H / 2;
+      this.seedAmbient(this.biomeNow());
+      this.buildMinimap();
+    }
+
+    // ---------- Ambient atmosphere particles ----------
+    seedAmbient(biome){
+      this.ambientParticles = [];
+      for(let i = 0; i < 18; i++) this.ambientParticles.push(this.makeAmbientParticle(biome, true));
+    }
+    makeAmbientParticle(biome, randomY){
+      const base = {
+        x: Math.random() * ROOM_W,
+        y: randomY ? Math.random() * ROOM_H : (biome.key === 'ice' ? -10 : ROOM_H + 10),
+        size: 1.5 + Math.random() * 2.5,
+        alpha: 0.2 + Math.random() * 0.4,
+        drift: (Math.random() - 0.5) * 10
+      };
+      if(biome.key === 'ice'){ base.vy = 20 + Math.random() * 20; base.vx = base.drift; }
+      else if(biome.key === 'lava'){ base.vy = -(15 + Math.random() * 25); base.vx = base.drift; }
+      else if(biome.key === 'roots'){ base.vy = -(6 + Math.random() * 10); base.vx = base.drift * 0.5; }
+      else { base.vy = (Math.random() - 0.5) * 6; base.vx = (Math.random() - 0.5) * 6; }
+      return base;
+    }
+    updateAmbient(dt, biome){
+      for(const p of this.ambientParticles){
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        if(biome.key === 'ice' && p.y > ROOM_H + 10) Object.assign(p, this.makeAmbientParticle(biome, false));
+        if(biome.key === 'lava' && p.y < -10) Object.assign(p, this.makeAmbientParticle(biome, false));
+        if((biome.key === 'stone' || biome.key === 'roots')){
+          if(p.x < 0 || p.x > ROOM_W || p.y < -10 || p.y > ROOM_H + 10) Object.assign(p, this.makeAmbientParticle(biome, false));
+        }
+      }
+    }
+
+    // ---------- Main update ----------
+    update(time, delta){
+      const dt = Math.min(0.033, delta / 1000);
+      this.stepGame(dt);
+      this.renderRoom(time / 1000);
+      this.updateHud();
+    }
+
+    stepGame(dt){
+      if(this.gameOver || this.gameWon) return;
+      if(this.hitStop > 0){ this.hitStop -= dt; return; }
+
+      const p = this.player;
+      const k = this.keys;
+
+      p.shielding = p.hasShield && k.shift.isDown;
+
+      let mx = 0, my = 0;
+      if(k.left.isDown || k.a.isDown) mx -= 1;
+      if(k.right.isDown || k.d.isDown) mx += 1;
+      if(k.up.isDown || k.w.isDown) my -= 1;
+      if(k.down.isDown || k.s.isDown) my += 1;
+      const moving = mx !== 0 || my !== 0;
+      if(moving){
+        const len = Math.hypot(mx, my);
+        mx /= len; my /= len;
+        p.dir = { x: mx, y: my };
+      }
+      p._moving = moving;
+
+      const moveSpeed = p.speed * (p.shielding ? CONFIG.player.shieldSpeedMultiplier : 1);
+      const nx = p.x + mx * moveSpeed * dt;
+      const ny = p.y + my * moveSpeed * dt;
+
+      const inst = this.curInst();
+      let px = nx, py = p.y;
+      const pRectX = { x: px - p.w / 2, y: py - p.h / 2, w: p.w, h: p.h };
+      for(const o of inst.obstacles){ if(rectsOverlap(pRectX, o)){ px = p.x; break; } }
+      let py2 = ny;
+      const pRectY = { x: px - p.w / 2, y: py2 - p.h / 2, w: p.w, h: p.h };
+      for(const o of inst.obstacles){ if(rectsOverlap(pRectY, o)){ py2 = p.y; break; } }
+      p.x = px; p.y = py2;
+
+      const gapMin = (ROOM_H - DOOR_GAP) / 2, gapMax = (ROOM_H + DOOR_GAP) / 2;
+      const gapMinX = (ROOM_W - DOOR_GAP) / 2, gapMaxX = (ROOM_W + DOOR_GAP) / 2;
+
+      if(p.x < 0){
+        const passable = this.isDoorPassable(this.current.x, this.current.y, this.current.x - 1, this.current.y) && p.y > gapMin && p.y < gapMax;
+        if(passable) this.moveToRoom(this.current.x - 1, this.current.y, 'W');
+        else { this.tryOpenLockedDoor(this.current.x - 1, this.current.y); p.x = 0; }
+      }
+      if(p.x > ROOM_W){
+        const passable = this.isDoorPassable(this.current.x, this.current.y, this.current.x + 1, this.current.y) && p.y > gapMin && p.y < gapMax;
+        if(passable) this.moveToRoom(this.current.x + 1, this.current.y, 'E');
+        else { this.tryOpenLockedDoor(this.current.x + 1, this.current.y); p.x = ROOM_W; }
+      }
+      if(p.y < 0){
+        const passable = this.isDoorPassable(this.current.x, this.current.y, this.current.x, this.current.y - 1) && p.x > gapMinX && p.x < gapMaxX;
+        if(passable) this.moveToRoom(this.current.x, this.current.y - 1, 'N');
+        else { this.tryOpenLockedDoor(this.current.x, this.current.y - 1); p.y = 0; }
+      }
+      if(p.y > ROOM_H){
+        const passable = this.isDoorPassable(this.current.x, this.current.y, this.current.x, this.current.y + 1) && p.x > gapMinX && p.x < gapMaxX;
+        if(passable) this.moveToRoom(this.current.x, this.current.y + 1, 'S');
+        else { this.tryOpenLockedDoor(this.current.x, this.current.y + 1); p.y = ROOM_H; }
+      }
+
+      if(p.attackCd > 0) p.attackCd -= dt;
+      if(p.attacking > 0) p.attacking -= dt;
+      if(k.space.isDown && p.attackCd <= 0 && !p.shielding){
+        p.attackCd = CONFIG.player.attackCooldown;
+        p.attacking = CONFIG.player.attackDuration;
+        const hb = this.playerAttackHitbox();
+        for(const en of this.curInst().enemies){
+          const enRect = { x: en.x - en.r, y: en.y - en.r, w: en.r * 2, h: en.r * 2 };
+          if(rectsOverlap(hb, enRect)){
+            en.hp -= CONFIG.combat.attackDamage;
+            en.hitFlash = 0.15;
+            const kb = CONFIG.combat.attackKnockback;
+            en.x += p.dir.x * kb * dt * 6;
+            en.y += p.dir.y * kb * dt * 6;
+            this.burst(en.x, en.y, en.type === 'boss' ? COLORS.chest : COLORS.chaser, 8);
+            this.hitStop = Math.max(this.hitStop, CONFIG.effects.attackHitStop);
+          }
+        }
+      }
+
+      if(k.bomb.isDown && p.bombs > 0 && !this._bombLock){
+        p.bombs--;
+        this.bombs.push({ x: p.x, y: p.y, fuse: CONFIG.combat.bombFuseTime });
+        this._bombLock = true;
+      }
+      if(!k.bomb.isDown) this._bombLock = false;
+
+      if(Phaser.Input.Keyboard.JustDown(k.dbgKill)){
+        const room = this.curInst();
+        for(const en of room.enemies) this.burst(en.x, en.y, en.type === 'boss' ? COLORS.chest : 0xffffff, 14);
+        room.enemies.length = 0;
+      }
+      if(Phaser.Input.Keyboard.JustDown(k.dbgGod)) p.godmode = !p.godmode;
+      if(Phaser.Input.Keyboard.JustDown(k.dbgWarp)) this.warpToBossRoom();
+
+      if(p.invuln > 0) p.invuln -= dt;
+      if(p.hurtTimer > 0) p.hurtTimer -= dt;
+      if(p.happyTimer > 0) p.happyTimer -= dt;
+
+      for(let i = this.bombs.length - 1; i >= 0; i--){
+        const b = this.bombs[i];
+        b.fuse -= dt;
+        if(b.fuse <= 0){
+          this.burst(b.x, b.y, COLORS.bombFuse, 30);
+          const e = CONFIG.effects;
+          this.cameras.main.shake(e.bombShake, e.bombShakeMag);
+          this.cameras.main.flash(220, 255, 176, 32);
+          this.hitStop = e.bombHitStop;
+          const radius = CONFIG.combat.bombRadius;
+          for(const en of this.curInst().enemies){
+            if(dist(en.x, en.y, b.x, b.y) < radius + en.r){
+              en.hp -= CONFIG.combat.bombDamageToEnemies;
+              en.hitFlash = 0.2;
+            }
+          }
+          if(dist(p.x, p.y, b.x, b.y) < radius + p.w / 2) this.damagePlayer(CONFIG.combat.bombDamageToPlayer);
+          this.tryBreakCrackedNear(b.x, b.y);
+          this.bombs.splice(i, 1);
+        }
+      }
+
+      const roomInst = this.curInst();
+      for(let i = roomInst.enemies.length - 1; i >= 0; i--){
+        const en = roomInst.enemies[i];
+        if(en.hitFlash > 0) en.hitFlash -= dt;
+        if(en._blockCd > 0) en._blockCd -= dt;
+        if(en.hp <= 0){
+          this.burst(en.x, en.y, en.type === 'boss' ? COLORS.chest : 0xffffff, 16);
+          roomInst.enemies.splice(i, 1);
+          continue;
+        }
+        if(en.type === 'chaser' || en.type === 'boss'){
+          const d = dist(en.x, en.y, p.x, p.y);
+          if(d > 1){
+            const vx = (p.x - en.x) / d, vy = (p.y - en.y) / d;
+            en.x += vx * en.speed * dt;
+            en.y += vy * en.speed * dt;
+          }
+        } else if(en.type === 'turret'){
+          en.shootCd -= dt;
+          if(en.shootCd <= 0){
+            en.shootCd = CONFIG.enemies.turret.shootCooldown;
+            const d = dist(en.x, en.y, p.x, p.y);
+            const vx = (p.x - en.x) / d, vy = (p.y - en.y) / d;
+            const ps = CONFIG.combat.projectileSpeed;
+            this.projectiles.push({ x: en.x, y: en.y, vx: vx * ps, vy: vy * ps, r: CONFIG.combat.projectileRadius });
+          }
+        }
+        en.x = clamp(en.x, en.r, ROOM_W - en.r);
+        en.y = clamp(en.y, en.r, ROOM_H - en.r);
+
+        if(dist(en.x, en.y, p.x, p.y) < en.r + p.w / 2){
+          if(this.isShieldBlocking(en.x, en.y)){
+            if(!(en._blockCd > 0)){
+              this.burst(en.x, en.y, hex('#dfe8ff'), 4);
+              en._blockCd = 0.12;
+            }
+            const dx = en.x - p.x, dy = en.y - p.y, dd = Math.hypot(dx, dy) || 1;
+            en.x += (dx / dd) * 140 * dt;
+            en.y += (dy / dd) * 140 * dt;
+          } else {
+            const contactDamage = en.type === 'boss' ? CONFIG.enemies.boss.contactDamage
+              : en.type === 'turret' ? CONFIG.enemies.turret.contactDamage
+              : CONFIG.enemies.chaser.contactDamage;
+            this.damagePlayer(contactDamage);
+          }
+        }
+      }
+
+      if(!roomInst.cleared && roomInst.enemies.length === 0){
+        roomInst.cleared = true;
+        if(roomInst.meta.type === 'boss'){
+          this.gameWon = true;
+          this.showMessage('Dungeon complete!', 'press retry for another seed');
+        }
+      }
+
+      for(let i = this.projectiles.length - 1; i >= 0; i--){
+        const pr = this.projectiles[i];
+        pr.x += pr.vx * dt; pr.y += pr.vy * dt;
+        if(pr.x < 0 || pr.x > ROOM_W || pr.y < 0 || pr.y > ROOM_H){ this.projectiles.splice(i, 1); continue; }
+        if(dist(pr.x, pr.y, p.x, p.y) < pr.r + p.w / 2){
+          if(this.isShieldBlocking(pr.x, pr.y)) this.burst(pr.x, pr.y, hex('#dfe8ff'), 4);
+          else this.damagePlayer(CONFIG.combat.projectileDamage);
+          this.projectiles.splice(i, 1);
+        }
+      }
+
+      this.updateAmbient(dt, this.biomeNow());
+
+      const meta = roomInst.meta;
+      if((meta.type === 'item' || meta.type === 'key' || meta.type === 'secret') && !roomInst.chestTaken){
+        const cx = ROOM_W / 2, cy = ROOM_H / 2;
+        if(dist(p.x, p.y, cx, cy) < CONFIG.rooms.chestPickupRadius){
+          roomInst.chestTaken = true;
+          p.happyTimer = CONFIG.player.happyEyeDuration;
+          if(meta.type === 'key') p.hasKey = true;
+          else if(meta.type === 'item'){
+            p.maxBombs = Math.min(p.maxBombs + CONFIG.items.maxBombsIncrement, CONFIG.items.maxBombsCap);
+            p.bombs = Math.min(p.bombs + CONFIG.items.bombRefillAmount, p.maxBombs);
+          } else if(meta.type === 'secret'){
+            p.hp = Math.min(p.hp + CONFIG.items.secretHealAmount, p.maxHp);
+          }
+          this.burst(cx, cy, COLORS.chest, 24);
+        }
+      }
+    }
+
+    // ---------- Rendering ----------
+    // A single Graphics object is cleared and fully redrawn every frame —
+    // the direct Phaser analogue of the prototype's clearRect + full canvas
+    // redraw. save()/restore()/translateCanvas()/rotateCanvas() on Graphics
+    // mirror ctx.save/restore/translate/rotate almost one-for-one, so most
+    // of the original draw routines below map over with only the ctx.* ->
+    // g.* renames. Per-shape shadowBlur "glow" has no Graphics equivalent,
+    // so it's approximated with a soft low-alpha circle underneath.
+    glow(g, x, y, r, color, strength){
+      g.fillStyle(color, strength == null ? 0.25 : strength);
+      g.fillCircle(x, y, r * 1.7);
+    }
+
+    renderRoom(t){
+      const g = this.g;
+      g.clear();
+      const inst = this.curInst();
+      const biome = this.biomeNow();
+
+      this.drawFloor(g, biome);
+      this.drawDecor(g, inst, biome, t);
+      this.drawWalls(g, inst, biome, t);
+      this.drawObstacles(g, inst);
+      this.drawChest(g, inst, t);
+      this.drawAmbient(g, biome);
+      this.drawBombs(g, t);
+      this.drawEnemies(g, t);
+      this.drawProjectiles(g);
+      this.drawPlayer(g, t);
+
+      if(inst.meta.type === 'boss' && !inst.cleared){
+        g.fillStyle(COLORS.chaser, 0.08);
+        g.fillRect(0, 0, ROOM_W, ROOM_H);
+      }
+    }
+
+    drawFloor(g, biome){
+      g.fillStyle(biome.floor, 1);
+      g.fillRect(0, 0, ROOM_W, ROOM_H);
+      g.lineStyle(1, biome.floorLine, 0.6);
+      for(let gx = 0; gx <= ROOM_W; gx += 60){ g.lineBetween(gx, 0, gx, ROOM_H); }
+      for(let gy = 0; gy <= ROOM_H; gy += 60){ g.lineBetween(0, gy, ROOM_W, gy); }
+    }
+
+    // Simplified scenery: corner "fixtures" and floor decor are now
+    // biome-tinted glowing dots rather than bespoke per-biome art.
+    drawDecor(g, inst, biome, t){
+      for(const d of inst.decor){
+        if(d.kind === 'corner'){
+          const pulse = 0.7 + Math.sin(t * 4 + d.seed) * 0.25;
+          this.glow(g, d.x, d.y, 10, biome.glow, 0.18 * pulse);
+          g.fillStyle(biome.glow, 0.8 * pulse);
+          g.fillCircle(d.x, d.y, 4);
+        } else {
+          g.fillStyle(biome.particle, 0.28);
+          g.fillCircle(d.x, d.y, 3 * d.size);
+        }
+      }
+    }
+
+    drawWalls(g, inst, biome, t){
+      for(const d of DIRS){
+        const nx = this.current.x + d.dx, ny = this.current.y + d.dy;
+        const st0 = this.getDoorState(this.current.x, this.current.y, nx, ny);
+        let st = st0;
+        if(!st0) st = 'solid';
+        else if(!inst.cleared && st0 === 'open') st = 'sealed';
+        this.drawWallSide(g, d.name, st, biome, t);
+      }
+    }
+
+    drawWallSide(g, dirName, state, biome, t){
+      let color = biome.wall;
+      if(state === 'locked') color = COLORS.wallLocked;
+      else if(state === 'cracked') color = COLORS.wallCracked;
+      else if(state === 'sealed') color = COLORS.wallSealed;
+
+      const hasGap = state === 'open';
+      g.fillStyle(color, 1);
+
+      if(dirName === 'N' || dirName === 'S'){
+        const yTop = dirName === 'N' ? -WALL : ROOM_H;
+        if(hasGap){
+          g.fillRect(-WALL, yTop, (ROOM_W - DOOR_GAP) / 2 + WALL, WALL);
+          g.fillRect((ROOM_W + DOOR_GAP) / 2, yTop, (ROOM_W - DOOR_GAP) / 2 + WALL, WALL);
+        } else {
+          g.fillRect(-WALL, yTop, ROOM_W + WALL * 2, WALL);
+        }
+      } else {
+        const x = dirName === 'W' ? -WALL : ROOM_W;
+        if(hasGap){
+          g.fillRect(x, -WALL, WALL, (ROOM_H - DOOR_GAP) / 2 + WALL);
+          g.fillRect(x, (ROOM_H + DOOR_GAP) / 2, WALL, (ROOM_H - DOOR_GAP) / 2 + WALL);
+        } else {
+          g.fillRect(x, -WALL, WALL, ROOM_H + WALL * 2);
+        }
+      }
+
+      if(state === 'locked' || state === 'cracked'){
+        let ix, iy;
+        if(dirName === 'N'){ ix = ROOM_W / 2; iy = -WALL / 2; }
+        else if(dirName === 'S'){ ix = ROOM_W / 2; iy = ROOM_H + WALL / 2; }
+        else if(dirName === 'W'){ ix = -WALL / 2; iy = ROOM_H / 2; }
+        else { ix = ROOM_W + WALL / 2; iy = ROOM_H / 2; }
+        const pulse = 1 + Math.sin(t * 3) * 0.15;
+        g.save();
+        g.translateCanvas(ix, iy);
+        g.scaleCanvas(pulse, pulse);
+        if(state === 'locked'){
+          g.lineStyle(2, 0xffffff, 0.73);
+          g.beginPath(); g.arc(0, -4, 4, Math.PI, Math.PI * 2); g.strokePath();
+          g.fillStyle(0xffffff, 0.87);
+          g.fillRect(-5, -4, 10, 8);
+        } else {
+          g.lineStyle(1.5, 0xffffff, 0.6);
+          g.beginPath();
+          g.moveTo(-6, -6); g.lineTo(-1, 0); g.lineTo(-4, 5);
+          g.strokePath();
+          g.beginPath();
+          g.moveTo(6, -6); g.lineTo(1, 0); g.lineTo(4, 5);
+          g.strokePath();
+        }
+        g.restore();
+      }
+    }
+
+    drawObstacles(g, inst){
+      for(const o of inst.obstacles){
+        g.fillStyle(COLORS.obstacleEdge, 1);
+        g.fillRoundedRect(o.x - 1, o.y - 1, o.w + 2, o.h + 2, 4);
+        g.fillStyle(hex('#2a2f3d'), 1);
+        g.fillRoundedRect(o.x, o.y, o.w, o.h, 4);
+        g.fillStyle(0xffffff, 0.06);
+        g.fillRect(o.x, o.y, o.w, 4);
+        g.fillStyle(0x000000, 0.25);
+        g.fillRect(o.x, o.y + o.h - 4, o.w, 4);
+      }
+    }
+
+    drawChest(g, inst, t){
+      const meta = inst.meta;
+      if((meta.type === 'item' || meta.type === 'key' || meta.type === 'secret') && !inst.chestTaken){
+        const cx = ROOM_W / 2, cy = ROOM_H / 2 + Math.sin(t * 2) * 4;
+        const chestColor = meta.type === 'secret' ? COLORS.chestSecret : COLORS.chest;
+        this.glow(g, cx, cy, 20 + Math.sin(t * 3) * 6, chestColor, 0.3);
+        g.fillStyle(chestColor, 1);
+        g.fillPoints([{ x: cx, y: cy - 18 }, { x: cx + 18, y: cy }, { x: cx, y: cy + 18 }, { x: cx - 18, y: cy }], true);
+        g.lineStyle(2, 0x000000, 0.33);
+        g.strokePoints([{ x: cx, y: cy - 18 }, { x: cx + 18, y: cy }, { x: cx, y: cy + 18 }, { x: cx - 18, y: cy }], true);
+      }
+    }
+
+    drawAmbient(g, biome){
+      for(const p of this.ambientParticles){
+        g.fillStyle(biome.particle, p.alpha);
+        g.fillCircle(p.x, p.y, p.size);
+      }
+    }
+
+    drawBombs(g, t){
+      for(const b of this.bombs){
+        const urgency = clamp(1 - (b.fuse / CONFIG.combat.bombFuseTime), 0, 1);
+        const wobble = Math.sin(t * (20 + urgency * 30)) * urgency * 1.5;
+        const bx = b.x + wobble, by = b.y;
+        g.fillStyle(COLORS.bomb, 1);
+        g.fillCircle(bx, by, 14);
+        const blink = Math.sin(b.fuse * 30) > 0;
+        if(blink) this.glow(g, bx, by - 14, 4, COLORS.bombFuse, 0.4);
+        g.fillStyle(blink ? COLORS.bombFuse : hex('#552200'), 1);
+        g.fillCircle(bx, by - 14, 4);
+      }
+    }
+
+    drawTrackingEyes(g, cx, cy, r, dirx, diry){
+      const px = -diry, py = dirx;
+      const ef = r * 0.45, es = r * 0.45, er = r * 0.36, pr = r * 0.17, pl = r * 0.12;
+      for(const side of [-1, 1]){
+        const ex = cx + dirx * ef + px * es * side;
+        const ey = cy + diry * ef + py * es * side;
+        g.fillStyle(COLORS.eyeWhite, 1);
+        g.fillCircle(ex, ey, er);
+        g.lineStyle(1, 0x000000, 0.25);
+        g.strokeCircle(ex, ey, er);
+        g.fillStyle(COLORS.eyePupil, 1);
+        g.fillCircle(ex + dirx * pl, ey + diry * pl, pr);
+      }
+    }
+
+    drawEnemies(g, t){
+      for(const en of this.curInst().enemies){
+        const flash = en.hitFlash > 0;
+        const pulse = 1 + Math.sin(t * 4 + en.x) * 0.04;
+        const p = this.player;
+        const gdx = p.x - en.x, gdy = p.y - en.y;
+        const glen = Math.hypot(gdx, gdy) || 1;
+        const gx = gdx / glen, gy = gdy / glen;
+
+        if(en.type === 'chaser'){
+          const col = flash ? 0xffffff : COLORS.chaser;
+          this.glow(g, en.x, en.y, en.r * pulse, COLORS.chaser, flash ? 0.05 : 0.3);
+          g.fillStyle(col, 1);
+          g.fillCircle(en.x, en.y, en.r * pulse);
+        } else if(en.type === 'turret'){
+          const fatX = 1.2, fatY = 0.85;
+          const jiggle = 1 + Math.sin(t * 3 + en.y) * 0.03;
+          const col = flash ? 0xffffff : COLORS.turret;
+          this.glow(g, en.x, en.y, en.r * pulse, COLORS.turret, flash ? 0.05 : 0.3);
+          g.fillStyle(col, 1);
+          g.fillEllipse(en.x, en.y, en.r * 2 * fatX * jiggle * pulse, en.r * 2 * fatY * (2 - jiggle) * pulse);
+          g.fillStyle(0xffffff, 0.28);
+          g.fillEllipse(en.x - en.r * 0.28, en.y - en.r * 0.32, en.r * 0.44, en.r * 0.26);
+        } else if(en.type === 'boss'){
+          const col = flash ? 0xffffff : COLORS.chaser;
+          this.glow(g, en.x, en.y, en.r * pulse, COLORS.chaser, flash ? 0.05 : 0.4);
+          const pts = [];
+          for(let i = 0; i < 6; i++){
+            const a = Math.PI / 3 * i - Math.PI / 2 + t * 0.3;
+            pts.push({ x: en.x + Math.cos(a) * en.r * pulse, y: en.y + Math.sin(a) * en.r * pulse });
+          }
+          g.fillStyle(col, 1);
+          g.fillPoints(pts, true);
+        }
+
+        this.drawTrackingEyes(g, en.x, en.y, en.r, gx, gy);
+
+        if(en.type === 'boss'){
+          const w = 60;
+          g.fillStyle(0x000000, 0.53);
+          g.fillRect(en.x - w / 2, en.y - en.r - 16, w, 6);
+          g.fillStyle(COLORS.chaser, 1);
+          g.fillRect(en.x - w / 2, en.y - en.r - 16, w * (en.hp / en.maxHp), 6);
+        }
+      }
+    }
+
+    drawProjectiles(g){
+      for(const p of this.projectiles){
+        this.glow(g, p.x, p.y, p.r, COLORS.projectile, 0.4);
+        g.fillStyle(COLORS.projectile, 1);
+        g.fillCircle(p.x, p.y, p.r);
+      }
+    }
+
+    drawPlayer(g, t){
+      const p = this.player;
+      const moving = p._moving;
+      const bob = moving ? Math.sin(t * 10) * 2 : Math.sin(t * 2.2) * 1.5;
+      const ep = CONFIG.player;
+      const dlen = Math.hypot(p.dir.x, p.dir.y) || 1;
+      const dx = p.dir.x / dlen, dy = p.dir.y / dlen;
+      const px = -dy, py = dx;
+      const cx = p.x, cy = p.y + bob;
+      const blink = p.invuln > 0 && Math.floor(p.invuln * 12) % 2 === 0;
+
+      // tail: a simple bent line (quadratic curve simplified to two
+      // segments) with a round tip
+      const wagSpeed = moving ? ep.tailWagSpeedMoving : ep.tailWagSpeedIdle;
+      const wagAmt = moving ? ep.tailWagAmplitude : ep.tailWagAmplitude * 0.4;
+      const wag = Math.sin(t * wagSpeed) * wagAmt;
+      const tbx = cx - dx * (p.w * 0.32), tby = cy - dy * (p.h * 0.32);
+      const tcx = cx - dx * (ep.tailLength * 0.55) + px * wag * 0.5, tcy = cy - dy * (ep.tailLength * 0.55) + py * wag * 0.5;
+      const ttx = cx - dx * ep.tailLength + px * wag, tty = cy - dy * ep.tailLength + py * wag;
+      g.lineStyle(ep.tailWidth, COLORS.playerTail, 1);
+      g.beginPath();
+      g.moveTo(tbx, tby); g.lineTo(tcx, tcy); g.lineTo(ttx, tty);
+      g.strokePath();
+      g.fillStyle(COLORS.playerTail, 1);
+      g.fillCircle(ttx, tty, ep.tailTipRadius);
+
+      const biome = this.biomeNow();
+      this.glow(g, cx, cy, p.w / 2, biome.glow, 0.35);
+
+      let sx = 1, sy = 1;
+      if(p.attacking > 0){ sx = 1.3; sy = 0.85; }
+      else if(moving){ sx = 1 + Math.abs(Math.sin(t * 10)) * 0.06; sy = 1 - Math.abs(Math.sin(t * 10)) * 0.06; }
+      g.fillStyle(blink ? 0xffffff : COLORS.player, 1);
+      g.fillEllipse(cx, cy, p.w * sx, p.h * sy);
+
+      g.fillStyle(0xffffff, 0.3);
+      g.fillEllipse(cx - p.w * 0.22, cy - p.h * 0.26, p.w * 0.32, p.h * 0.2);
+
+      if(p.hurtTimer > 0){
+        for(const side of [-1, 1]){
+          const ex = cx + dx * ep.eyeForwardOffset + px * ep.eyeSpacing * side;
+          const ey = cy + dy * ep.eyeForwardOffset + py * ep.eyeSpacing * side;
+          g.fillStyle(COLORS.eyeWhite, 1);
+          g.fillCircle(ex, ey, ep.eyeRadius * ep.hurtEyeScale);
+          g.fillStyle(COLORS.eyePupil, 1);
+          g.fillCircle(ex, ey, ep.pupilRadius * 0.75);
+        }
+      } else if(p.happyTimer > 0){
+        g.lineStyle(2.2, COLORS.eyePupil, 1);
+        for(const side of [-1, 1]){
+          const ex = cx + dx * ep.eyeForwardOffset + px * ep.eyeSpacing * side;
+          const ey = cy + dy * ep.eyeForwardOffset + py * ep.eyeSpacing * side;
+          g.beginPath();
+          g.arc(ex, ey + 2, ep.eyeRadius * 0.8, Math.PI * 1.15, Math.PI * 1.85);
+          g.strokePath();
+        }
+      } else {
+        for(const side of [-1, 1]){
+          const ex = cx + dx * ep.eyeForwardOffset + px * ep.eyeSpacing * side;
+          const ey = cy + dy * ep.eyeForwardOffset + py * ep.eyeSpacing * side;
+          g.fillStyle(COLORS.eyeWhite, 1);
+          g.fillCircle(ex, ey, ep.eyeRadius);
+          g.fillStyle(COLORS.eyePupil, 1);
+          g.fillCircle(ex + dx * ep.pupilLead, ey + dy * ep.pupilLead, ep.pupilRadius);
+        }
+      }
+
+      // sword swing: a stick pivoting across the facing direction
+      if(p.attacking > 0){
+        const progress = 1 - (p.attacking / ep.attackDuration);
+        const swingDeg = ep.swordSwingStartDeg + (ep.swordSwingEndDeg - ep.swordSwingStartDeg) * progress;
+        const baseAngle = Math.atan2(p.dir.y, p.dir.x);
+        const angle = baseAngle + swingDeg * Math.PI / 180;
+        g.save();
+        g.translateCanvas(cx, cy);
+        g.rotateCanvas(angle);
+        g.fillStyle(COLORS.sword, 1);
+        g.fillRoundedRect(ep.swordPivotOffset, -ep.swordWidth / 2, ep.swordLength, ep.swordWidth, 2);
+        g.lineStyle(1.5, COLORS.swordEdge, 1);
+        g.strokeRoundedRect(ep.swordPivotOffset, -ep.swordWidth / 2, ep.swordLength, ep.swordWidth, 2);
+        g.restore();
+      }
+
+      // shield: a small plate held out in front
+      if(p.shielding){
+        const so = ep.shieldOffset, sw = ep.shieldWidth, sh = ep.shieldHeight;
+        g.save();
+        g.translateCanvas(cx, cy);
+        g.rotateCanvas(Math.atan2(p.dir.y, p.dir.x));
+        g.fillStyle(hex('#f4d35e'), 1);
+        g.fillRoundedRect(so - sw / 2, -sh / 2, sw, sh, 3);
+        g.lineStyle(2, 0x000000, 0.4);
+        g.strokeRoundedRect(so - sw / 2, -sh / 2, sw, sh, 3);
+        g.restore();
+      }
+
+      // godmode ring
+      if(p.godmode){
+        const pulse = Math.sin(t * 6) * 3;
+        const r = p.w * 0.9 + 10 + pulse;
+        this.glow(g, cx, cy, r, COLORS.godmode, 0.3);
+        g.lineStyle(3, COLORS.godmode, 0.85);
+        g.strokeCircle(cx, cy, r);
+        g.lineStyle(1.5, COLORS.godmode, 0.5);
+        g.strokeCircle(cx, cy, r + 5);
+      }
+    }
+
+    // ---------- HUD (plain DOM overlay, unchanged from the prototype) ----------
+    updateHud(){
+      const p = this.player;
+      const heartsEl = document.getElementById('hearts');
+      heartsEl.innerHTML = '';
+      const totalHearts = p.maxHp / 2;
+      for(let i = 0; i < totalHearts; i++){
+        const filled = p.hp >= (i + 1) * 2;
+        const half = !filled && p.hp > i * 2;
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '16'); svg.setAttribute('height', '16');
+        svg.classList.add('heart');
+        const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        poly.setAttribute('points', '8,2 14,8 8,14 2,8');
+        poly.setAttribute('fill', (filled || half) ? '#e2555a' : '#333846');
+        poly.setAttribute('stroke', '#00000055');
+        svg.appendChild(poly);
+        heartsEl.appendChild(svg);
+      }
+      document.getElementById('bombCount').textContent = p.bombs + '/' + p.maxBombs;
+      document.getElementById('keyWrap').style.display = p.hasKey ? 'flex' : 'none';
+      document.getElementById('godWrap').style.display = p.godmode ? 'flex' : 'none';
+    }
+
+    buildMinimap(){
+      const b = this.biomeNow();
+      document.getElementById('biomeLabel').textContent = b.name;
+      document.getElementById('biomeLabel').style.color = '#' + b.glow.toString(16).padStart(6, '0');
+      const mm = document.getElementById('minimap');
+      mm.innerHTML = '';
+      const coords = [...this.dungeon.rooms.values()];
+      const xs = coords.map(r => r.x), ys = coords.map(r => r.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+      const cols = maxX - minX + 1, rows = maxY - minY + 1;
+      mm.style.gridTemplateColumns = `repeat(${cols}, 10px)`;
+      mm.style.gridTemplateRows = `repeat(${rows}, 10px)`;
+      for(let y = minY; y <= maxY; y++){
+        for(let x = minX; x <= maxX; x++){
+          const k = roomKey(x, y);
+          const div = document.createElement('div');
+          div.className = 'mm-cell';
+          const inst = this.roomInstances.get(k);
+          if(inst && inst.visited){
+            div.classList.add('visited');
+            if(inst.meta.type === 'boss') div.classList.add('boss');
+            if(inst.meta.type === 'item' || inst.meta.type === 'key' || inst.meta.type === 'secret') div.classList.add('item');
+          }
+          if(x === this.current.x && y === this.current.y) div.classList.add('current');
+          div.style.gridColumn = (x - minX + 1);
+          div.style.gridRow = (y - minY + 1);
+          mm.appendChild(div);
+        }
+      }
+    }
+
+    showMessage(text, sub){
+      const msg = document.getElementById('msg');
+      document.getElementById('msgText').textContent = text;
+      document.getElementById('msgSub').textContent = sub || '';
+      msg.style.display = 'block';
+      document.getElementById('restart').style.display = 'inline-block';
+    }
+  }
+
+  new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: 'game',
+    width: CANVAS_W,
+    height: CANVAS_H,
+    backgroundColor: '#12141c',
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+    scene: [DungeonScene]
+  });
+})();
+</script>
+</body>
+</html>
