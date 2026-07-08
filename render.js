@@ -852,6 +852,22 @@
           ctx.lineTo(ox-4, 9);
           ctx.stroke();
         }
+      } else if(inst.skillItem==='jump'){
+        ctx.shadowColor = COLORS.jump; ctx.shadowBlur = 16 + Math.sin(t*3)*5;
+        ctx.strokeStyle = COLORS.jump;
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        // stacked upward chevrons -- reads as "hop"/"lift" rather than
+        // dash's sideways motion lines
+        for(let i=0;i<2;i++){
+          const oy = 7 - i*10;
+          ctx.beginPath();
+          ctx.moveTo(-9, oy);
+          ctx.lineTo(0, oy-8);
+          ctx.lineTo(9, oy);
+          ctx.stroke();
+        }
       }
       ctx.restore();
     }
@@ -1457,8 +1473,31 @@
     const dlen = Math.hypot(player.dir.x, player.dir.y) || 1;
     const dx = player.dir.x/dlen, dy = player.dir.y/dlen;
     const px = -dy, py = dx; // perpendicular axis, used for eye spacing and tail wag
+
+    // jump arc: a simple sine hump over the jump's duration (0 at takeoff/
+    // landing, peaking at jumpHeight halfway through). `lift` shifts the
+    // whole body (and everything drawn relative to it below) upward on
+    // screen; a shrinking ground shadow at the true (unlifted) position
+    // sells the height. Folded into `bob` further down so every part of
+    // the body -- sword, bow, arrow rest -- rises together.
+    let jumpFrac = 0, lift = 0;
+    if(player.jumping>0){
+      const progress = 1 - (player.jumping/CONFIG.player.jumpDuration);
+      jumpFrac = Math.sin(clamp(progress,0,1)*Math.PI); // 0 -> 1 -> 0
+      lift = jumpFrac*CONFIG.player.jumpHeight;
+      ctx.save();
+      const shrink = 1 - jumpFrac*0.4;
+      ctx.globalAlpha = 0.32*(1-jumpFrac*0.5);
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.ellipse(player.x, player.y+player.h*0.4, player.w*0.4*shrink, player.h*0.2*shrink, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+    const totalBob = bob - lift;
+
     ctx.save();
-    ctx.translate(player.x, player.y + bob);
+    ctx.translate(player.x, player.y + totalBob);
     const blink = player.invuln>0 && Math.floor(player.invuln*12)%2===0;
 
     // small wagging tail, drawn behind the body so the ball covers its base
@@ -1490,6 +1529,12 @@
     if(player.dashing>0){ sx = 1.6; sy = 0.7; }
     else if(player.attacking>0){ sx = 1.3; sy = 0.85; }
     else if(moving){ sx = 1 + Math.abs(Math.sin(t*10))*0.06; sy = 1 - Math.abs(Math.sin(t*10))*0.06; }
+    if(jumpFrac>0){
+      // reads as "closer to camera" at the peak of the hop, layered on
+      // top of whatever squash/stretch is already happening
+      const jumpScale = 1 + jumpFrac*0.18;
+      sx *= jumpScale; sy *= jumpScale;
+    }
     ctx.save();
     ctx.scale(sx,sy);
     // round, cute ball body (was a square)
@@ -1563,7 +1608,7 @@
       const baseAngle = Math.atan2(player.dir.y, player.dir.x);
       const angle = baseAngle + swingDeg*Math.PI/180;
       ctx.save();
-      ctx.translate(player.x, player.y + bob);
+      ctx.translate(player.x, player.y + totalBob);
       ctx.rotate(angle);
       ctx.fillStyle = COLORS.sword;
       ctx.strokeStyle = COLORS.swordEdge;
@@ -1583,7 +1628,7 @@
       const bo = p.bowDrawOffset, bl = p.bowLength;
       const pull = (player.bowDraw/p.bowDrawDuration); // 1 right after firing -> 0
       ctx.save();
-      ctx.translate(player.x, player.y + bob);
+      ctx.translate(player.x, player.y + totalBob);
       ctx.rotate(Math.atan2(player.dir.y, player.dir.x));
       ctx.strokeStyle = COLORS.bow;
       ctx.lineWidth = 4;
@@ -1606,7 +1651,7 @@
     if(player.shielding){
       const so = CONFIG.player.shieldOffset, sw = CONFIG.player.shieldWidth, sh = CONFIG.player.shieldHeight;
       ctx.save();
-      ctx.translate(player.x, player.y + bob);
+      ctx.translate(player.x, player.y + totalBob);
       ctx.rotate(Math.atan2(player.dir.y, player.dir.x));
       ctx.fillStyle = COLORS.chest;
       ctx.strokeStyle = 'rgba(0,0,0,0.4)';
@@ -1623,7 +1668,7 @@
       const pulse = Math.sin(t*6)*3;
       const r = player.w*0.9 + 10 + pulse;
       ctx.save();
-      ctx.translate(player.x, player.y + bob);
+      ctx.translate(player.x, player.y + totalBob);
       ctx.strokeStyle = '#f4d35e';
       ctx.shadowColor = '#f4d35e';
       ctx.shadowBlur = 14;

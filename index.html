@@ -18,6 +18,7 @@
         <div class="stat-row"><span>Bombs used</span><span id="statBombs">0</span></div>
         <div class="stat-row"><span>Arrows fired</span><span id="statArrows">0</span></div>
         <div class="stat-row"><span>Dashes used</span><span id="statDashes">0</span></div>
+        <div class="stat-row"><span>Jumps used</span><span id="statJumps">0</span></div>
         <div class="stat-row"><span>Depth</span><span id="statDepth">0</span></div>
         <div class="stat-row"><span>Biome</span><span id="statBiome">&mdash;</span></div>
         <div class="stat-row"><span>Difficulty</span><span id="statDifficulty">&mdash;</span></div>
@@ -84,6 +85,10 @@
               <svg width="16" height="16"><path d="M2 3 L9 8 L2 13 M7 3 L14 8 L7 13" fill="none" stroke="var(--accent2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
               <span id="dashStatus">ready</span>
             </div>
+            <div class="res-item" id="jumpWrap" style="display:none;">
+              <svg width="16" height="16"><path d="M8 13 L8 4 M4 7 L8 3 L12 7" fill="none" stroke="var(--jump-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span id="jumpStatus">ready</span>
+            </div>
           </div>
         </div>
         <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
@@ -95,7 +100,7 @@
       <button id="restart">Retry</button>
     </div>
   </div>
-  <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; F: fire bow &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; E: dash &nbsp;&middot;&nbsp; M: mute audio &nbsp;&middot;&nbsp; walk into blocks to push them onto plates &nbsp;&middot;&nbsp; attack pedestals to repeat their sequence &nbsp;&middot;&nbsp; dash between timed plates before they fade &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; L: debug unlock all (bow + bomb bag + dash + key + infinite ammo) &nbsp;&middot;&nbsp; P: debug solve puzzle &nbsp;&middot;&nbsp; Y: debug warp to boss &nbsp;&middot;&nbsp; H: debug warp to start</span></div>
+  <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; F: fire bow &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; E: dash &nbsp;&middot;&nbsp; J: jump (over holes/projectiles) &nbsp;&middot;&nbsp; M: mute audio &nbsp;&middot;&nbsp; walk into blocks to push them onto plates &nbsp;&middot;&nbsp; attack pedestals to repeat their sequence &nbsp;&middot;&nbsp; dash between timed plates before they fade &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; L: debug unlock all (bow + bomb bag + dash + jump + key + infinite ammo) &nbsp;&middot;&nbsp; P: debug solve puzzle &nbsp;&middot;&nbsp; Y: debug warp to boss &nbsp;&middot;&nbsp; H: debug warp to start</span></div>
 </div>
 
 <script src="audio.js"></script>

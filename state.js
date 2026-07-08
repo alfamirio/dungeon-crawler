@@ -34,7 +34,7 @@
     }
     current = {x:0,y:0};
     roomInstances.get(roomKey(0,0)).visited = true;
-    stats = { roomsVisited: 1, enemiesKilled: 0, bombsPlaced: 0, arrowsFired: 0, dashesUsed: 0 };
+    stats = { roomsVisited: 1, enemiesKilled: 0, bombsPlaced: 0, arrowsFired: 0, dashesUsed: 0, jumpsUsed: 0 };
 
     // Place the bow and bomb-bag skill pickups in two distinct normal
     // rooms, so each run finds them in different spots. These are grabbable
@@ -46,7 +46,7 @@
       const j = Math.floor(Math.random()*(i+1));
       [normalKeys[i], normalKeys[j]] = [normalKeys[j], normalKeys[i]];
     }
-    const skillKinds = ['bow', 'bombBag', 'dash'];
+    const skillKinds = ['bow', 'bombBag', 'dash', 'jump'];
     for(let i=0; i<skillKinds.length && i<normalKeys.length; i++){
       const inst = roomInstances.get(normalKeys[i]);
       inst.skillItem = skillKinds[i];
@@ -74,6 +74,9 @@
       dashCd: 0,
       dashing: 0,        // >0 while a dash burst is in progress
       dashDir: {x:0, y:1}, // direction locked in at the moment the dash started
+      hasJump: false,    // jump must be found as a skill pickup in a room
+      jumpCd: 0,
+      jumping: 0,        // >0 while a jump hang is in progress (skips holes, grants invuln)
       godmode: false,
       hasShield: true,   // shield is available from the start, alongside the sword
       shielding: false,

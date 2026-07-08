@@ -113,13 +113,14 @@
     if(inst.puzzle && !inst.puzzle.solved) solvePuzzleRoom(inst);
   }
 
-  // DEBUG: grants the bow + bomb bag + dash + a key, and toggles infinite
-  // bombs/arrows on/off (topping bombs/arrows back up to max when turning
-  // it on). Shared by the L hotkey and the sidebar "Unlock all" toggle.
+  // DEBUG: grants the bow + bomb bag + dash + jump + a key, and toggles
+  // infinite bombs/arrows on/off (topping bombs/arrows back up to max when
+  // turning it on). Shared by the L hotkey and the sidebar "Unlock all" toggle.
   function debugSetUnlockAll(v){
     player.hasBow = true;
     player.hasBombBag = true;
     player.hasDash = true;
+    player.hasJump = true;
     player.hasKey = true;
     player.infiniteAmmo = v;
     if(v){
@@ -179,7 +180,7 @@
     // invulnerability -- unlocked as a skill pickup like the bow/bomb bag
     if(player.dashCd>0) player.dashCd -= dt;
     if(player.dashing>0) player.dashing -= dt;
-    if(keys['KeyE'] && player.hasDash && player.dashCd<=0 && player.dashing<=0 && !player.shielding){
+    if(keys['KeyE'] && player.hasDash && player.dashCd<=0 && player.dashing<=0 && player.jumping<=0 && !player.shielding){
       player.dashCd = CONFIG.player.dashCooldown;
       player.dashing = CONFIG.player.dashDuration;
       player.dashDir = {x: player.dir.x, y: player.dir.y};
@@ -193,6 +194,22 @@
       // so releasing keys mid-dash doesn't cut it short
       mx = player.dashDir.x; my = player.dashDir.y;
       spawnParticles(player.x, player.y, COLORS.dash, 2);
+    }
+
+    // jump: a brief hang time that skips falling into holes and grants
+    // invulnerability (including to projectiles), without changing speed
+    // or locking the facing direction the way dash does -- so the player
+    // keeps steering normally while airborne. Unlocked as a skill pickup
+    // like the bow/bomb bag/dash. Mutually exclusive with dash.
+    if(player.jumpCd>0) player.jumpCd -= dt;
+    if(player.jumping>0) player.jumping -= dt;
+    if(keys['KeyJ'] && player.hasJump && player.jumpCd<=0 && player.jumping<=0 && player.dashing<=0 && !player.shielding){
+      player.jumpCd = CONFIG.player.jumpCooldown;
+      player.jumping = CONFIG.player.jumpDuration;
+      player.invuln = Math.max(player.invuln, CONFIG.player.jumpDuration);
+      stats.jumpsUsed++;
+      SFX.jump();
+      spawnParticles(player.x, player.y, COLORS.jump, 10);
     }
 
     const moveSpeed = player.dashing>0
@@ -229,8 +246,8 @@
     player.x = px; player.y = py2;
 
     // fall hazard: walking (or being pushed) far enough over a hole is
-    // instant death, unless mid-dash (dashing clears a pit) or invincible
-    if(!player.godmode && player.dashing<=0){
+    // instant death, unless mid-dash or mid-jump (both clear a pit) or invincible
+    if(!player.godmode && player.dashing<=0 && player.jumping<=0){
       const hole = holeAt(player.x, player.y, inst.obstacles);
       if(hole) fallIntoHole();
     }
@@ -333,7 +350,7 @@
     }
     if(!keys['KeyI']) player._debugGodLock = false;
 
-    // DEBUG: L key grants the bow + bomb bag + dash + key, and toggles infinite bombs/arrows
+    // DEBUG: L key grants the bow + bomb bag + dash + jump + key, and toggles infinite bombs/arrows
     if(keys['KeyL'] && !player._debugUnlockLock){
       player._debugUnlockLock = true;
       debugSetUnlockAll(!player.infiniteAmmo);
@@ -778,6 +795,10 @@
           player.hasDash = true;
           spawnParticles(sp.x,sp.y,COLORS.dash,20);
           SFX.pickup();
+        } else if(roomInst.skillItem==='jump'){
+          player.hasJump = true;
+          spawnParticles(sp.x,sp.y,COLORS.jump,20);
+          SFX.pickup();
         }
       }
     }
@@ -786,3 +807,4 @@
 
     updateHud();
   }
+

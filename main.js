@@ -28,6 +28,10 @@
     const dashReady = player.dashCd<=0;
     document.getElementById('dashStatus').textContent = dashReady ? 'ready' : '...';
     document.getElementById('dashWrap').style.opacity = dashReady ? '1' : '0.45';
+    document.getElementById('jumpWrap').style.display = player.hasJump ? 'flex' : 'none';
+    const jumpReady = player.jumpCd<=0;
+    document.getElementById('jumpStatus').textContent = jumpReady ? 'ready' : '...';
+    document.getElementById('jumpWrap').style.opacity = jumpReady ? '1' : '0.45';
 
     // ---- sidebar: run stats ----
     document.getElementById('statRooms').textContent = stats.roomsVisited;
@@ -35,6 +39,7 @@
     document.getElementById('statBombs').textContent = stats.bombsPlaced;
     document.getElementById('statArrows').textContent = stats.arrowsFired;
     document.getElementById('statDashes').textContent = stats.dashesUsed;
+    document.getElementById('statJumps').textContent = stats.jumpsUsed;
     const inst = curInst();
     document.getElementById('statDepth').textContent = inst.meta.dist;
     document.getElementById('statBiome').textContent = biomeFor(inst.meta.dist).name;
