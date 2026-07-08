@@ -619,6 +619,9 @@
       drawObstacle(o);
     }
 
+    // puzzle elements (push-blocks/plates, or switch pedestals + sequence hint)
+    if(inst.puzzle) drawPuzzle(inst);
+
     // chest with glow and floating animation
     const meta = inst.meta;
     if((meta.type==='item'||meta.type==='key'||meta.type==='secret') && !inst.chestTaken){
@@ -743,6 +746,94 @@
     if(meta.type==='boss' && !inst.cleared){
       ctx.fillStyle = 'rgba(226,85,90,0.08)';
       ctx.fillRect(0,0,ROOM_W,ROOM_H);
+    }
+  }
+
+  // Draws whichever puzzle type the current room hosts. Push-block rooms
+  // get glowing plate outlines (solid + green once covered) under solid
+  // pushable blocks; switch rooms get a ring of pedestals that light up
+  // during the memorize phase and flash green/red on a correct/wrong
+  // repeat, plus a short instruction line while unsolved.
+  function drawPuzzle(inst){
+    const pz = inst.puzzle;
+    const t = performance.now()/1000;
+    if(pz.kind==='push'){
+      for(const p of pz.plates){
+        const active = pz.blocks.some(b => dist(b.x+b.w/2,b.y+b.h/2,p.x,p.y) <= CONFIG.puzzles.push.plateSnapRadius);
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        const color = active ? COLORS.puzzlePlateActive : COLORS.puzzlePlate;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = active ? 16 : 7;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        if(!active) ctx.setLineDash([5,4]);
+        ctx.beginPath();
+        ctx.arc(0,0,p.r,0,Math.PI*2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      for(const b of pz.blocks){
+        const cx = b.x+b.w/2, cy = b.y+b.h/2;
+        ctx.save();
+        ctx.translate(cx,cy);
+        ctx.shadowColor = b.onPlate ? COLORS.puzzlePlateActive : '#000000';
+        ctx.shadowBlur = b.onPlate ? 14 : 0;
+        ctx.fillStyle = COLORS.puzzleBlock;
+        ctx.strokeStyle = COLORS.puzzleBlockEdge;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        if(ctx.roundRect) ctx.roundRect(-b.w/2, -b.h/2, b.w, b.h, 6);
+        else ctx.rect(-b.w/2, -b.h/2, b.w, b.h);
+        ctx.fill(); ctx.stroke();
+        // carved X to read as "this can be pushed"
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-b.w*0.28,-b.h*0.28); ctx.lineTo(b.w*0.28,b.h*0.28);
+        ctx.moveTo(b.w*0.28,-b.h*0.28); ctx.lineTo(-b.w*0.28,b.h*0.28);
+        ctx.stroke();
+        ctx.restore();
+      }
+    } else if(pz.kind==='switch'){
+      for(let i=0;i<pz.switches.length;i++){
+        const sw = pz.switches[i];
+        let color = COLORS.puzzleSwitchIdle, glow = 6;
+        if(pz.solved){
+          color = COLORS.puzzleSwitchCorrect; glow = 14 + Math.sin(t*3)*4;
+        } else if(pz.flashSwitch === i){
+          if(pz.phase==='feedback') color = pz.feedbackOk ? COLORS.puzzleSwitchCorrect : COLORS.puzzleSwitchWrong;
+          else color = COLORS.puzzleSwitchLit;
+          glow = 18;
+        }
+        ctx.save();
+        ctx.translate(sw.x, sw.y);
+        ctx.shadowColor = color;
+        ctx.shadowBlur = glow;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(0,0,sw.r,0,Math.PI*2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath();
+        ctx.arc(0,0,sw.r*0.45,0,Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+      }
+      if(!pz.solved){
+        ctx.save();
+        ctx.font = '600 15px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(217,220,227,0.75)';
+        const label = pz.phase==='showing' ? 'MEMORIZE THE SEQUENCE' : 'REPEAT IT \u2014 ATTACK IN ORDER';
+        ctx.fillText(label, ROOM_W/2, 56);
+        ctx.restore();
+      }
     }
   }
 

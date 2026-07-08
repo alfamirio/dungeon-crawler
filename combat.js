@@ -192,6 +192,102 @@
     return bx < prox; // 'W'
   }
 
+  // ---------- Puzzle rooms ----------
+  // Called once, the moment a puzzle room's condition is met (every plate
+  // covered, or the switch sequence repeated correctly). Mirrors the
+  // fight-room-clear reward: a chest or a heart, chosen the same way.
+  function solvePuzzleRoom(inst){
+    inst.cleared = true;
+    inst.puzzle.solved = true;
+    SFX.puzzleSolved();
+    spawnParticles(ROOM_W/2, ROOM_H/2, COLORS.puzzlePlateActive, 30);
+    const pos = findClearDropPos(inst.obstacles);
+    if(Math.random() < CONFIG.items.roomDropChestChance){
+      inst.bombDrop = {x: pos.x, y: pos.y, taken:false};
+    } else {
+      inst.heartDrop = {x: pos.x, y: pos.y, taken:false};
+    }
+  }
+
+  // Per-frame puzzle tick. Push puzzles just re-check plate coverage every
+  // frame (the blocks themselves are moved by tryPushBlock() during player
+  // movement resolution). Switch puzzles run a small state machine: light
+  // the sequence one pedestal at a time ('showing'), wait for the player to
+  // repeat it via pressSwitch() ('input'), and pause briefly on a right/
+  // wrong guess ('feedback') before continuing or restarting the memorize phase.
+  function updatePuzzle(inst, dt){
+    const pz = inst.puzzle;
+    if(!pz || pz.solved) return;
+    if(pz.kind==='push'){
+      const snap = CONFIG.puzzles.push.plateSnapRadius;
+      let allOn = true;
+      for(const b of pz.blocks){
+        b.onPlate = pz.plates.some(p => dist(b.x+b.w/2, b.y+b.h/2, p.x, p.y) <= snap);
+      }
+      for(const p of pz.plates){
+        if(!pz.blocks.some(b => dist(b.x+b.w/2,b.y+b.h/2,p.x,p.y) <= snap)){ allOn = false; break; }
+      }
+      if(allOn) solvePuzzleRoom(inst);
+    } else if(pz.kind==='switch'){
+      const sc = CONFIG.puzzles.switchPuzzle;
+      if(pz.phase==='showing'){
+        pz.revealTimer -= dt;
+        if(pz.revealTimer<=0){
+          if(pz.flashSwitch===-1){
+            pz.flashSwitch = pz.sequence[pz.revealIndex];
+            pz.revealTimer = sc.revealOnDuration;
+          } else {
+            pz.flashSwitch = -1;
+            pz.revealIndex++;
+            if(pz.revealIndex >= pz.sequence.length){
+              pz.phase = 'input';
+              pz.step = 0;
+            } else {
+              pz.revealTimer = sc.revealGapDuration;
+            }
+          }
+        }
+      } else if(pz.phase==='feedback'){
+        pz.revealTimer -= dt;
+        if(pz.revealTimer<=0){
+          if(pz.feedbackOk){
+            pz.flashSwitch = -1;
+            pz.phase = 'input';
+          } else {
+            pz.flashSwitch = -1;
+            pz.phase = 'showing';
+            pz.revealIndex = 0;
+            pz.revealTimer = sc.initialDelay;
+          }
+        }
+      }
+      // 'input' phase just waits for pressSwitch(), called from the melee
+      // attack handler in update.js when a swing lands on a pedestal.
+    }
+  }
+
+  // A switch pedestal was hit by the player's sword. Only does anything
+  // while the puzzle is actually waiting for input.
+  function pressSwitch(inst, idx){
+    const pz = inst.puzzle;
+    if(!pz || pz.kind!=='switch' || pz.solved || pz.phase!=='input') return;
+    if(pz.sequence[pz.step] === idx){
+      pz.step++;
+      pz.flashSwitch = idx;
+      pz.feedbackOk = true;
+      pz.phase = 'feedback';
+      pz.revealTimer = 0.22;
+      SFX.puzzleCorrect();
+      if(pz.step >= pz.sequence.length) solvePuzzleRoom(inst);
+    } else {
+      pz.flashSwitch = idx;
+      pz.feedbackOk = false;
+      pz.phase = 'feedback';
+      pz.revealTimer = 0.4;
+      SFX.puzzleWrong();
+    }
+  }
+
   function tryBreakCrackedNear(bx,by){
     for(const d of DIRS){
       const nx = current.x+d.dx, ny = current.y+d.dy;

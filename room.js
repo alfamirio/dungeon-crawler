@@ -3,7 +3,7 @@
   // ---------- Room instance (runtime state) ----------
   function makeObstacles(type, biomeKey){
     const obs = [];
-    if(type==='start' || type==='item' || type==='secret') return obs;
+    if(type==='start' || type==='item' || type==='secret' || type==='puzzle') return obs;
     const oc = CONFIG.obstacles;
     const n = randInt(oc.countMin, oc.countMax);
     for(let i=0;i<n;i++){
@@ -75,7 +75,7 @@
     if(factor===undefined) factor = 1;
     const dc = CONFIG.difficulty;
     const enemies = [];
-    if(type==='start' || type==='item' || type==='secret') return enemies;
+    if(type==='start' || type==='item' || type==='secret' || type==='puzzle') return enemies;
     const ec = CONFIG.enemies;
     const isBossRoom = type==='boss';
     const baseCount = isBossRoom ? 1 : Math.min(ec.baseCount + Math.floor(dist/ec.countPerDist), ec.maxCount);
@@ -160,7 +160,7 @@
     }
 
     // scattered floor decor, avoiding obstacles and (for treasure rooms) the center chest
-    const isTreasureRoom = (type==='item' || type==='key' || type==='secret');
+    const isTreasureRoom = (type==='item' || type==='key' || type==='secret' || type==='puzzle');
     const count = isTreasureRoom ? dc.treasureFloorCount : randInt(dc.floorCountMin, dc.floorCountMax);
     for(let i=0;i<count;i++){
       let x, y, ok = false;
@@ -180,6 +180,76 @@
     return decor;
   }
 
+  // ---------- Puzzle room setup ----------
+  // Push-block puzzle: places `blockCount` plates first (kept apart from
+  // each other and off the room center, where the player enters), then an
+  // equal number of blocks, kept clear of the plates and each other so the
+  // starting layout always requires at least a little shoving to solve.
+  function buildPushPuzzle(){
+    const pc = CONFIG.puzzles.push;
+    const margin = pc.pushMargin;
+    const plates = [];
+    for(let i=0;i<pc.blockCount;i++){
+      let x, y, tries = 0, ok = false;
+      do {
+        x = randInt(margin, ROOM_W-margin);
+        y = randInt(margin, ROOM_H-margin);
+        ok = dist(x,y,ROOM_W/2,ROOM_H/2) > 70 && plates.every(p => dist(x,y,p.x,p.y) > pc.plateRadius*3);
+        tries++;
+      } while(!ok && tries<30);
+      plates.push({x, y, r: pc.plateRadius});
+    }
+    const blocks = [];
+    const w = pc.blockSize, h = pc.blockSize;
+    for(let i=0;i<pc.blockCount;i++){
+      let x, y, tries = 0, ok = false;
+      do {
+        x = randInt(margin, ROOM_W-margin-w);
+        y = randInt(margin, ROOM_H-margin-h);
+        const cx = x+w/2, cy = y+h/2;
+        ok = plates.every(p => dist(cx,cy,p.x,p.y) > pc.plateRadius*2);
+        if(ok){
+          const rect = {x,y,w,h};
+          for(const b of blocks){
+            if(rectsOverlap(rect, {x:b.x-12,y:b.y-12,w:b.w+24,h:b.h+24})){ ok = false; break; }
+          }
+        }
+        tries++;
+      } while(!ok && tries<30);
+      blocks.push({x, y, w, h, onPlate:false});
+    }
+    return { kind:'push', blocks, plates, solved:false };
+  }
+
+  // Switch-sequence (Simon-says) puzzle: pedestals arranged evenly around
+  // the room center; solved by repeating a randomly generated press order
+  // back via melee attacks (see pressSwitch()/updatePuzzle() in combat.js).
+  function buildSwitchPuzzle(){
+    const sc = CONFIG.puzzles.switchPuzzle;
+    const n = sc.switchCount;
+    const switches = [];
+    for(let i=0;i<n;i++){
+      const angle = (Math.PI*2*i)/n - Math.PI/2;
+      const x = ROOM_W/2 + Math.cos(angle)*ROOM_W*0.32;
+      const y = ROOM_H/2 + Math.sin(angle)*ROOM_H*0.32;
+      switches.push({x, y, r: sc.switchRadius});
+    }
+    const sequence = [];
+    for(let i=0;i<sc.sequenceLength;i++) sequence.push(randInt(0,n-1));
+    return {
+      kind: 'switch', switches, sequence,
+      step: 0, phase: 'showing', revealIndex: 0, revealTimer: sc.initialDelay,
+      flashSwitch: -1, feedbackOk: false, solved: false
+    };
+  }
+
+  function buildPuzzleState(meta){
+    if(meta.type !== 'puzzle') return null;
+    if(meta.puzzleKind === 'push') return buildPushPuzzle();
+    if(meta.puzzleKind === 'switch') return buildSwitchPuzzle();
+    return null;
+  }
+
   function buildRoomInstance(meta){
     const obstacles = makeObstacles(meta.type, biomeFor(meta.dist).key);
     return {
@@ -193,6 +263,7 @@
       enemies: [],
       enemiesBuilt: false,
       enemyCountAtStart: 0,
+      puzzle: buildPuzzleState(meta), // push-block/switch state, or null outside puzzle rooms
       cleared: (meta.type==='start' || meta.type==='item' || meta.type==='secret'),
       visited: false,
       chestTaken: false,

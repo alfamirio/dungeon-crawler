@@ -13,7 +13,9 @@
       doorGap: 165            // width of the passable opening in each wall
     },
     dungeon: {
-      roomCount: 13           // approx number of main rooms generated
+      roomCount: 13,           // approx number of main rooms generated
+      puzzleChance: 1,         // chance [0-1] each eligible puzzle slot actually becomes a puzzle room (vs staying a normal combat room)
+      maxPuzzleRoomsPerType: 1 // cap on how many push-block rooms (and separately, switch rooms) can appear in one dungeon
     },
     player: {
       width: 40,
@@ -253,6 +255,27 @@
       skillPickupRadius: 30,    // how close the player must get to collect the bow / bomb-bag skill pickups
       crackedWallProximity: 60  // how close a bomb must be to a cracked wall to break it
     },
+    // ----------------------------------------------------------------
+    // Puzzle rooms: non-combat rooms gated the same way a fight room is
+    // (via the room's `cleared` flag), just solved differently.
+    // ----------------------------------------------------------------
+    puzzles: {
+      push: {
+        blockCount: 2,           // number of pushable blocks (and matching plates)
+        blockSize: 46,
+        plateRadius: 30,
+        plateSnapRadius: 34,     // how close a block's center must be to a plate's center to count as "on"
+        pushMargin: 90           // keep-out margin from walls when placing blocks/plates
+      },
+      switchPuzzle: {
+        switchCount: 4,          // pedestals arranged around the room
+        switchRadius: 26,
+        sequenceLength: 4,       // number of presses needed to solve it
+        revealOnDuration: 0.5,   // how long each switch stays lit during the memorize phase
+        revealGapDuration: 0.25, // pause between reveals
+        initialDelay: 0.6        // pause before the first reveal (on entry, and after a wrong guess)
+      }
+    },
     items: {
       maxBombsCap: 8,
       bombRefillAmount: 2,
@@ -321,7 +344,15 @@
     chestBoss: '#e2555a',
     obstacle: '#2a2f3d',
     obstacleEdge: '#3a4256',
-    explosion: 'rgba(255,176,32,0.55)'
+    explosion: 'rgba(255,176,32,0.55)',
+    puzzleBlock: '#5a6478',
+    puzzleBlockEdge: '#3a4256',
+    puzzlePlate: '#4fd1c5',
+    puzzlePlateActive: '#7ad14f',
+    puzzleSwitchIdle: '#3a4256',
+    puzzleSwitchLit: '#f4d35e',
+    puzzleSwitchCorrect: '#7ad14f',
+    puzzleSwitchWrong: '#e2555a'
   };
 
   // Biomes by depth: each stretch of rooms changes the palette

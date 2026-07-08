@@ -162,6 +162,18 @@
         tone(300, 0.3, {type:'sine', gain:0.16, freqEnd:120});
         tone(220, 0.4, {type:'sine', gain:0.14, freqEnd:80, delay:0.18});
       },
+      puzzleCorrect(){
+        if(!throttle('puzzleCorrect', 60)) return;
+        tone(700, 0.08, {type:'sine', gain:0.15, freqEnd:900});
+      },
+      puzzleWrong(){
+        tone(220, 0.18, {type:'sawtooth', gain:0.14, freqEnd:110});
+      },
+      puzzleSolved(){
+        tone(520, 0.12, {type:'sine', gain:0.15});
+        tone(780, 0.14, {type:'sine', gain:0.14, delay:0.1});
+        tone(1040, 0.18, {type:'sine', gain:0.13, delay:0.22});
+      },
       victory(){
         tone(520, 0.16, {type:'sine', gain:0.15});
         tone(660, 0.16, {type:'sine', gain:0.15, delay:0.12});

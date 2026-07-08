@@ -161,12 +161,27 @@
 
     // obstacle collision (simple AABB resolve, axis separated)
     const inst = curInst();
+    const hasPushBlocks = inst.puzzle && inst.puzzle.kind==='push';
     let px = nx, py = player.y;
     const pRectX = {x:px-player.w/2, y:py-player.h/2, w:player.w, h:player.h};
     for(const o of inst.obstacles){ if(rectsOverlap(pRectX,o)){ px = player.x; break; } }
+    if(hasPushBlocks){
+      for(const b of inst.puzzle.blocks){
+        if(rectsOverlap({x:px-player.w/2, y:py-player.h/2, w:player.w, h:player.h}, b)){
+          if(!tryPushBlock(inst, b, px-player.x, 0)) px = player.x;
+        }
+      }
+    }
     let py2 = ny;
     const pRectY = {x:px-player.w/2, y:py2-player.h/2, w:player.w, h:player.h};
     for(const o of inst.obstacles){ if(rectsOverlap(pRectY,o)){ py2 = player.y; break; } }
+    if(hasPushBlocks){
+      for(const b of inst.puzzle.blocks){
+        if(rectsOverlap({x:px-player.w/2, y:py2-player.h/2, w:player.w, h:player.h}, b)){
+          if(!tryPushBlock(inst, b, 0, py2-player.y)) py2 = player.y;
+        }
+      }
+    }
     player.x = px; player.y = py2;
 
     // room bounds / door transitions
@@ -209,6 +224,15 @@
           spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:COLORS.chaser, 8);
           hitStop = Math.max(hitStop, CONFIG.effects.attackHitStop);
           SFX.enemyHit();
+        }
+      }
+      // switch-puzzle pedestals are "hit" the same way enemies are
+      const pinst = curInst();
+      if(pinst.puzzle && pinst.puzzle.kind==='switch'){
+        for(let si=0; si<pinst.puzzle.switches.length; si++){
+          const sw = pinst.puzzle.switches[si];
+          const swRect = {x:sw.x-sw.r, y:sw.y-sw.r, w:sw.r*2, h:sw.r*2};
+          if(rectsOverlap(hb, swRect)){ pressSwitch(pinst, si); break; }
         }
       }
     }
@@ -469,7 +493,11 @@
       }
     }
 
-    if(!roomInst.cleared && roomInst.enemies.length===0){
+    // puzzle rooms: push-block plate coverage or switch-sequence solving,
+    // gating the room exactly like a fight does (via `cleared`)
+    if(roomInst.puzzle) updatePuzzle(roomInst, dt);
+
+    if(!roomInst.cleared && roomInst.meta.type!=='puzzle' && roomInst.enemies.length===0){
       roomInst.cleared = true;
       if(CONFIG.difficulty.enabled && roomInst.enemyCountAtStart>0){
         updateSkillFactor(roomInst);

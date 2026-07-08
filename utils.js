@@ -75,6 +75,21 @@
   }
   function choice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
 
+  // Attempts to shove a push-puzzle block by (dx,dy) -- the same delta the
+  // player just tried to move. Fails (returns false, leaving the block
+  // where it was) if that would push it into a wall, an obstacle, or
+  // another block; succeeds and moves it otherwise. Shared by both axes
+  // of the player-movement resolution in update.js.
+  function tryPushBlock(inst, block, dx, dy){
+    const nx = block.x+dx, ny = block.y+dy;
+    if(nx<0 || nx+block.w>ROOM_W || ny<0 || ny+block.h>ROOM_H) return false;
+    const rect = {x:nx, y:ny, w:block.w, h:block.h};
+    for(const o of inst.obstacles){ if(rectsOverlap(rect,o)) return false; }
+    for(const b2 of inst.puzzle.blocks){ if(b2!==block && rectsOverlap(rect,b2)) return false; }
+    block.x = nx; block.y = ny;
+    return true;
+  }
+
   const DIRS = [
     {dx:0, dy:-1, name:'N', opp:'S'},
     {dx:0, dy:1,  name:'S', opp:'N'},

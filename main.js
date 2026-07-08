@@ -102,6 +102,7 @@
           div.classList.add('visited');
           if(inst.meta.type==='boss') div.classList.add('boss');
           if(inst.meta.type==='item'||inst.meta.type==='key'||inst.meta.type==='secret') div.classList.add('item');
+          if(inst.meta.type==='puzzle') div.classList.add('puzzle');
         }
         if(x===current.x && y===current.y) div.classList.add('current');
         div.style.gridColumn = (x-minX+1);

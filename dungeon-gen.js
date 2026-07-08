@@ -89,6 +89,31 @@
     let keyRoom = candidates.length ? choice(candidates) : null;
     if(keyRoom) keyRoom.type = 'key';
 
+    // puzzle rooms: push-block room(s) and switch-sequence room(s), each
+    // picked fresh from whatever normal rooms are still left along the
+    // path (so they never land on start/boss/item/key/secret). How many
+    // of each actually appear is governed by CONFIG.dungeon.puzzleChance
+    // (rolled independently per slot) and capped by maxPuzzleRoomsPerType --
+    // at the defaults (chance 1, cap 1) this reproduces the old guaranteed
+    // "exactly one of each" behavior, but either can be tuned down (fewer/
+    // no puzzle rooms some runs) or up (a cap >1 allows multiples).
+    const dc = CONFIG.dungeon;
+    function assignPuzzleRooms(kind){
+      const assigned = [];
+      for(let i=0; i<dc.maxPuzzleRoomsPerType; i++){
+        if(Math.random() >= dc.puzzleChance) continue;
+        const candidates = [...rooms.values()].filter(r => r.type==='normal' && r.dist>=1);
+        if(!candidates.length) break;
+        const room = choice(candidates);
+        room.type = 'puzzle';
+        room.puzzleKind = kind;
+        assigned.push(room);
+      }
+      return assigned;
+    }
+    const pushRooms = assignPuzzleRooms('push');
+    const switchRooms = assignPuzzleRooms('switch');
+
     // lock the door leading into the boss room
     const bossNeighbors = neighborsOf(bossRoom.x,bossRoom.y);
     if(bossNeighbors.length){

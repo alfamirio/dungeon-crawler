@@ -9,6 +9,7 @@
     --floor-line: #262b39;
     --accent: #4fd1c5;
     --accent2: #f4d35e;
+    --puzzle: #8fe3ff;
     --danger: #e2555a;
     --text: #d9dce3;
     --muted: #6b7280;
@@ -112,8 +113,10 @@
   }
   .mm-cell.boss{ background: var(--danger); border-color: rgba(255,255,255,.25); box-shadow: 0 0 8px 1px rgba(226,85,90,.65); }
   .mm-cell.item{ background: var(--accent2); border-color: rgba(255,255,255,.25); box-shadow: 0 0 8px 1px rgba(244,211,94,.65); }
+  .mm-cell.puzzle{ background: var(--puzzle); border-color: rgba(255,255,255,.25); box-shadow: 0 0 8px 1px rgba(143,227,255,.65); }
   .mm-cell.current.boss{ background: var(--danger); box-shadow: 0 0 0 2px rgba(226,85,90,.4), 0 0 10px 3px var(--danger); }
   .mm-cell.current.item{ background: var(--accent2); box-shadow: 0 0 0 2px rgba(244,211,94,.4), 0 0 10px 3px var(--accent2); }
+  .mm-cell.current.puzzle{ background: var(--puzzle); box-shadow: 0 0 0 2px rgba(143,227,255,.4), 0 0 10px 3px var(--puzzle); }
   @keyframes mm-pulse{
     0%,100%{ transform:scale(1); }
     50%{ transform:scale(1.22); }
