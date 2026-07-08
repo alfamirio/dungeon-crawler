@@ -243,10 +243,77 @@
     };
   }
 
+  // Bomb-target ("detonate") puzzle: a handful of cracked urns scattered
+  // around the room that can only be broken by a bomb blast (melee/arrows
+  // don't count -- see tryDetonateTargetsNear() in combat.js, hooked into
+  // the bomb-explosion tick in update.js). Solved once every urn is gone.
+  function buildDetonatePuzzle(){
+    const dc = CONFIG.puzzles.detonate;
+    const margin = dc.margin;
+    const targets = [];
+    for(let i=0;i<dc.targetCount;i++){
+      let x, y, tries = 0, ok = false;
+      do {
+        x = randInt(margin, ROOM_W-margin);
+        y = randInt(margin, ROOM_H-margin);
+        ok = dist(x,y,ROOM_W/2,ROOM_H/2) > 70 && targets.every(o => dist(x,y,o.x,o.y) > dc.targetRadius*3);
+        tries++;
+      } while(!ok && tries<30);
+      targets.push({x, y, r: dc.targetRadius, destroyed:false});
+    }
+    return { kind:'detonate', targets, solved:false };
+  }
+
+  // Arrow-only ("snipe") switch puzzle: same memorize-then-repeat sequence
+  // as buildSwitchPuzzle(), but pressSwitch() only accepts hits from arrows
+  // (see the arrow-update loop in update.js) -- walking up and swinging the
+  // sword does nothing to these, unlike the regular switch puzzle.
+  function buildSnipePuzzle(){
+    const sc = CONFIG.puzzles.snipe;
+    const n = sc.switchCount;
+    const switches = [];
+    for(let i=0;i<n;i++){
+      const angle = (Math.PI*2*i)/n - Math.PI/2;
+      const x = ROOM_W/2 + Math.cos(angle)*ROOM_W*0.36;
+      const y = ROOM_H/2 + Math.sin(angle)*ROOM_H*0.36;
+      switches.push({x, y, r: sc.switchRadius});
+    }
+    const sequence = [];
+    for(let i=0;i<sc.sequenceLength;i++) sequence.push(randInt(0,n-1));
+    return {
+      kind: 'snipe', switches, sequence,
+      step: 0, phase: 'showing', revealIndex: 0, revealTimer: sc.initialDelay,
+      flashSwitch: -1, feedbackOk: false, solved: false
+    };
+  }
+
+  // Timed dash-gate ("rush") puzzle: plates spread wide around the room,
+  // each staying "lit" for activeDuration seconds after the player steps
+  // on it. Solved the instant every plate is lit at the same time -- see
+  // updatePuzzle()'s 'rush' branch in combat.js. Plates are spaced far
+  // enough apart that covering the room on foot alone usually can't relight
+  // an earlier plate before it fades, nudging the player toward dashing.
+  function buildRushPuzzle(){
+    const rc = CONFIG.puzzles.rush;
+    const margin = rc.margin;
+    const n = rc.plateCount;
+    const plates = [];
+    for(let i=0;i<n;i++){
+      const angle = (Math.PI*2*i)/n - Math.PI/2;
+      const x = clamp(ROOM_W/2 + Math.cos(angle)*ROOM_W*rc.ringFraction, margin, ROOM_W-margin);
+      const y = clamp(ROOM_H/2 + Math.sin(angle)*ROOM_H*rc.ringFraction, margin, ROOM_H-margin);
+      plates.push({x, y, r: rc.plateRadius, timer: 0});
+    }
+    return { kind:'rush', plates, activeDuration: rc.activeDuration, solved:false };
+  }
+
   function buildPuzzleState(meta){
     if(meta.type !== 'puzzle') return null;
     if(meta.puzzleKind === 'push') return buildPushPuzzle();
     if(meta.puzzleKind === 'switch') return buildSwitchPuzzle();
+    if(meta.puzzleKind === 'detonate') return buildDetonatePuzzle();
+    if(meta.puzzleKind === 'snipe') return buildSnipePuzzle();
+    if(meta.puzzleKind === 'rush') return buildRushPuzzle();
     return null;
   }
 

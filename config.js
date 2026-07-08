@@ -24,9 +24,9 @@
       startHp: 6,
       maxHp: 6,
       startBombs: 0,
-      maxBombs: 6,
+      maxBombs: 20,
       startArrows: 0,
-      maxArrows: 6,
+      maxArrows: 20,
       invulnDuration: 1.0,     // seconds of invincibility after taking damage
       attackCooldown: 0.24,    // seconds between attacks
       attackDuration: 0.11,    // seconds the attack hitbox stays active
@@ -274,19 +274,42 @@
         revealOnDuration: 0.5,   // how long each switch stays lit during the memorize phase
         revealGapDuration: 0.25, // pause between reveals
         initialDelay: 0.6        // pause before the first reveal (on entry, and after a wrong guess)
+      },
+      detonate: {
+        targetCount: 3,          // number of cracked, bomb-only breakable urns
+        targetRadius: 26,
+        margin: 100               // keep-out margin from walls when placing targets
+      },
+      snipe: {
+        switchCount: 4,          // targets arranged around the room
+        switchRadius: 24,
+        sequenceLength: 4,       // number of hits needed to solve it
+        revealOnDuration: 0.5,   // how long each target stays lit during the memorize phase
+        revealGapDuration: 0.25, // pause between reveals
+        initialDelay: 0.6        // pause before the first reveal (on entry, and after a wrong guess)
+      },
+      rush: {
+        plateCount: 3,           // plates spread around the room, all must be lit at once to solve
+        plateRadius: 34,
+        activeDuration: 6.00,    // seconds a plate stays lit after being stepped on -- tight enough
+                                 // that covering ground on foot alone usually isn't fast enough;
+                                 // a dash (see CONFIG.player.dashSpeed) closes the gap in time
+        margin: 100,             // keep-out margin from walls when placing plates
+        ringFraction: 0.4        // how far out from room-center the plates sit (fraction of room half-extent)
       }
     },
     items: {
-      maxBombsCap: 8,
+      maxBombsCap: 20,
       bombRefillAmount: 2,
       maxBombsIncrement: 1,
       secretHealAmount: 2,
       bombRoomDropAmount: 1,     // bombs granted by the pickup that appears after clearing a normal room
-      maxArrowsCap: 8,
+      maxArrowsCap: 20,
       arrowRefillAmount: 2,
       maxArrowsIncrement: 1,
       arrowRoomDropAmount: 2,     // arrows granted by the pickup that appears after clearing a normal room
-      roomDropRefillPercent: 0.5, // % of max bombs/arrows granted by the chest pickup
+      roomDropBombRefillAmount: 10,  // bombs granted by a room-clear treasure chest
+      roomDropArrowRefillAmount: 10, // arrows granted by a room-clear treasure chest
       roomDropChestChance: 0.5,  // chance a room-clear pickup is a chest (vs a heart) the rest of the time
       roomDropHeartHealPercent: 0.5 // % of max health restored by the heart pickup
     },
@@ -352,7 +375,14 @@
     puzzleSwitchIdle: '#3a4256',
     puzzleSwitchLit: '#f4d35e',
     puzzleSwitchCorrect: '#7ad14f',
-    puzzleSwitchWrong: '#e2555a'
+    puzzleSwitchWrong: '#e2555a',
+    puzzleTarget: '#8a5a3a',
+    puzzleTargetEdge: '#5a3a24',
+    puzzleTargetCrack: 'rgba(0,0,0,0.4)',
+    puzzleSnipeRingA: '#dfe8ff',
+    puzzleSnipeRingB: '#c62839',
+    puzzleRushPlate: '#3a4256',
+    puzzleRushActive: '#8fe3ff'
   };
 
   // Biomes by depth: each stretch of rooms changes the palette

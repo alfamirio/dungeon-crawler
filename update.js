@@ -50,6 +50,23 @@
     player.y = ROOM_H/2;
   }
 
+  // DEBUG: warp straight to a puzzle room of the given kind ('push',
+  // 'switch', 'detonate', 'snipe', 'rush'), dropping the player at its
+  // center. Some seeds may not roll every puzzle kind (see
+  // CONFIG.dungeon.puzzleChance/maxPuzzleRoomsPerType), so this is a no-op
+  // (with a console note) when the current dungeon doesn't have one.
+  function warpToPuzzleRoom(kind){
+    const meta = [...dungeon.rooms.values()].find(m => m.type==='puzzle' && m.puzzleKind===kind);
+    if(!meta){
+      console.log(`No ${kind} puzzle room in this dungeon seed.`);
+      return;
+    }
+    current = {x: meta.x, y: meta.y};
+    enterRoom();
+    player.x = ROOM_W/2;
+    player.y = ROOM_H/2;
+  }
+
   // Shared "walk close enough to a room-clear pickup" check: marks it taken,
   // triggers the player's happy-eyes reaction, and hands the drop to
   // `onCollect` for whatever reward/particle effect is specific to it.
@@ -78,13 +95,22 @@
     player.godmode = v;
   }
 
-  // DEBUG: grants the bow + bomb bag and sets infinite ammo on/off (topping
-  // bombs/arrows back up to max when turning it on). Shared by the L
-  // hotkey and the sidebar "Infinite ammo" toggle.
-  function debugSetInfiniteAmmo(v){
+  // DEBUG: instantly solves whatever puzzle the current room hosts (push,
+  // switch, detonate, or snipe), unsealing its door and granting the usual
+  // clear reward. No-op if the room has no puzzle or it's already solved.
+  function debugSolvePuzzle(){
+    const inst = curInst();
+    if(inst.puzzle && !inst.puzzle.solved) solvePuzzleRoom(inst);
+  }
+
+  // DEBUG: grants the bow + bomb bag + dash + a key, and toggles infinite
+  // bombs/arrows on/off (topping bombs/arrows back up to max when turning
+  // it on). Shared by the L hotkey and the sidebar "Unlock all" toggle.
+  function debugSetUnlockAll(v){
     player.hasBow = true;
     player.hasBombBag = true;
     player.hasDash = true;
+    player.hasKey = true;
     player.infiniteAmmo = v;
     if(v){
       player.bombs = player.maxBombs;
@@ -101,11 +127,16 @@
   document.getElementById('toggleGod').addEventListener('change', e => {
     debugSetGodmode(e.target.checked);
   });
-  document.getElementById('toggleAmmo').addEventListener('change', e => {
-    debugSetInfiniteAmmo(e.target.checked);
+  document.getElementById('toggleUnlockAll').addEventListener('change', e => {
+    debugSetUnlockAll(e.target.checked);
   });
   document.getElementById('btnClearRoom').addEventListener('click', debugKillRoom);
   document.getElementById('btnWarpBoss').addEventListener('click', warpToBossRoom);
+  document.getElementById('btnWarpPush').addEventListener('click', () => warpToPuzzleRoom('push'));
+  document.getElementById('btnWarpSwitch').addEventListener('click', () => warpToPuzzleRoom('switch'));
+  document.getElementById('btnWarpDetonate').addEventListener('click', () => warpToPuzzleRoom('detonate'));
+  document.getElementById('btnWarpSnipe').addEventListener('click', () => warpToPuzzleRoom('snipe'));
+  document.getElementById('btnWarpRush').addEventListener('click', () => warpToPuzzleRoom('rush'));
 
   function update(dt){
     if(flash>0) flash = Math.max(0, flash-dt*4);
@@ -226,7 +257,9 @@
           SFX.enemyHit();
         }
       }
-      // switch-puzzle pedestals are "hit" the same way enemies are
+      // switch-puzzle pedestals are "hit" the same way enemies are -- but
+      // only for the 'switch' kind; 'snipe' pedestals ignore melee entirely
+      // and only respond to arrows (see the arrow-update loop below)
       const pinst = curInst();
       if(pinst.puzzle && pinst.puzzle.kind==='switch'){
         for(let si=0; si<pinst.puzzle.switches.length; si++){
@@ -279,12 +312,19 @@
     }
     if(!keys['KeyI']) player._debugGodLock = false;
 
-    // DEBUG: L key grants the bow + bomb bag and toggles infinite bombs/arrows
-    if(keys['KeyL'] && !player._debugAmmoLock){
-      player._debugAmmoLock = true;
-      debugSetInfiniteAmmo(!player.infiniteAmmo);
+    // DEBUG: L key grants the bow + bomb bag + dash + key, and toggles infinite bombs/arrows
+    if(keys['KeyL'] && !player._debugUnlockLock){
+      player._debugUnlockLock = true;
+      debugSetUnlockAll(!player.infiniteAmmo);
     }
-    if(!keys['KeyL']) player._debugAmmoLock = false;
+    if(!keys['KeyL']) player._debugUnlockLock = false;
+
+    // DEBUG: P key instantly solves the current room's puzzle, if any
+    if(keys['KeyP'] && !player._debugPuzzleLock){
+      player._debugPuzzleLock = true;
+      debugSolvePuzzle();
+    }
+    if(!keys['KeyP']) player._debugPuzzleLock = false;
 
     // DEBUG: Y key warps directly to the boss room
     if(keys['KeyY'] && !player._debugWarpLock){
@@ -319,6 +359,7 @@
           damagePlayer(CONFIG.combat.bombDamageToPlayer);
         }
         tryBreakCrackedNear(b.x,b.y);
+        tryDetonateTargetsNear(b.x,b.y,radius);
         bombs.splice(i,1);
       }
     }
@@ -563,6 +604,21 @@
         }
       }
       if(hit){ arrows.splice(i,1); continue; }
+      // snipe-puzzle pedestals: only arrows trigger these (melee doesn't --
+      // see the attack handler above), sharing the same pressSwitch()
+      // sequence logic as the regular switch puzzle
+      const snipeInst = curInst();
+      if(snipeInst.puzzle && snipeInst.puzzle.kind==='snipe'){
+        for(let si=0; si<snipeInst.puzzle.switches.length; si++){
+          const sw = snipeInst.puzzle.switches[si];
+          if(dist(a.x,a.y,sw.x,sw.y) < sw.r + CONFIG.player.arrowWidth){
+            pressSwitch(snipeInst, si);
+            hit = true;
+            break;
+          }
+        }
+      }
+      if(hit){ arrows.splice(i,1); continue; }
       for(const o of curInst().obstacles){
         if(a.x>o.x && a.x<o.x+o.w && a.y>o.y && a.y<o.y+o.h){ arrows.splice(i,1); break; }
       }
@@ -626,9 +682,8 @@
     // (restores health) appears once a normal room's enemies are defeated;
     // both share the same "walk close enough, mark taken, react" shape.
     tryCollectDrop(roomInst.bombDrop, CONFIG.rooms.bombDropPickupRadius, (bd) => {
-      const pct = CONFIG.items.roomDropRefillPercent;
-      if(player.hasBombBag) player.bombs = Math.min(player.bombs+Math.round(player.maxBombs*pct), player.maxBombs);
-      if(player.hasBow) player.arrows = Math.min(player.arrows+Math.round(player.maxArrows*pct), player.maxArrows);
+      if(player.hasBombBag) player.bombs = Math.min(player.bombs+CONFIG.items.roomDropBombRefillAmount, player.maxBombs);
+      if(player.hasBow) player.arrows = Math.min(player.arrows+CONFIG.items.roomDropArrowRefillAmount, player.maxArrows);
       spawnParticles(bd.x,bd.y,COLORS.bombFuse,20);
       SFX.pickup();
     });

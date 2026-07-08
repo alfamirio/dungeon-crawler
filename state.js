@@ -110,7 +110,7 @@
 
   function isDoorPassable(x1,y1,x2,y2){
     const inst = curInst();
-    if(!inst.cleared) return false; // sealed during combat
+    if(!inst.cleared) return false; // sealed during combat or an unsolved puzzle
     const st = getDoorState(x1,y1,x2,y2);
     return st === 'open';
   }

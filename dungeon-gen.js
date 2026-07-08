@@ -113,6 +113,9 @@
     }
     const pushRooms = assignPuzzleRooms('push');
     const switchRooms = assignPuzzleRooms('switch');
+    const detonateRooms = assignPuzzleRooms('detonate');
+    const snipeRooms = assignPuzzleRooms('snipe');
+    const rushRooms = assignPuzzleRooms('rush');
 
     // lock the door leading into the boss room
     const bossNeighbors = neighborsOf(bossRoom.x,bossRoom.y);

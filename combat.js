@@ -228,8 +228,8 @@
         if(!pz.blocks.some(b => dist(b.x+b.w/2,b.y+b.h/2,p.x,p.y) <= snap)){ allOn = false; break; }
       }
       if(allOn) solvePuzzleRoom(inst);
-    } else if(pz.kind==='switch'){
-      const sc = CONFIG.puzzles.switchPuzzle;
+    } else if(pz.kind==='switch' || pz.kind==='snipe'){
+      const sc = pz.kind==='snipe' ? CONFIG.puzzles.snipe : CONFIG.puzzles.switchPuzzle;
       if(pz.phase==='showing'){
         pz.revealTimer -= dt;
         if(pz.revealTimer<=0){
@@ -263,6 +263,18 @@
       }
       // 'input' phase just waits for pressSwitch(), called from the melee
       // attack handler in update.js when a swing lands on a pedestal.
+    } else if(pz.kind==='rush'){
+      // every plate counts down once lit; stepping on one (re)fills it to
+      // activeDuration. Solved the instant every plate is lit at once --
+      // which, given how far apart they're placed, usually takes a dash
+      // to pull off before the first one you touched fades out.
+      for(const p of pz.plates){
+        if(p.timer>0) p.timer -= dt;
+      }
+      for(const p of pz.plates){
+        if(dist(player.x,player.y,p.x,p.y) <= p.r) p.timer = pz.activeDuration;
+      }
+      if(pz.plates.every(p => p.timer>0)) solvePuzzleRoom(inst);
     }
   }
 
@@ -270,7 +282,7 @@
   // while the puzzle is actually waiting for input.
   function pressSwitch(inst, idx){
     const pz = inst.puzzle;
-    if(!pz || pz.kind!=='switch' || pz.solved || pz.phase!=='input') return;
+    if(!pz || (pz.kind!=='switch' && pz.kind!=='snipe') || pz.solved || pz.phase!=='input') return;
     if(pz.sequence[pz.step] === idx){
       pz.step++;
       pz.flashSwitch = idx;
@@ -286,6 +298,26 @@
       pz.revealTimer = 0.4;
       SFX.puzzleWrong();
     }
+  }
+
+  // Checks a bomb-blast position/radius against the current room's
+  // detonate-puzzle targets (if any), destroying any that are caught in
+  // range and haven't already been destroyed. Solves the room once every
+  // target is gone. Only ever called with the player's own placed bombs,
+  // since detonate puzzle rooms never contain enemies (see makeEnemies()).
+  function tryDetonateTargetsNear(bx, by, radius){
+    const inst = curInst();
+    const pz = inst.puzzle;
+    if(!pz || pz.kind!=='detonate' || pz.solved) return;
+    for(const t of pz.targets){
+      if(t.destroyed) continue;
+      if(dist(bx,by,t.x,t.y) < radius+t.r){
+        t.destroyed = true;
+        spawnParticles(t.x,t.y, COLORS.puzzleTarget, 22);
+        SFX.wallBreak();
+      }
+    }
+    if(pz.targets.every(t => t.destroyed)) solvePuzzleRoom(inst);
   }
 
   function tryBreakCrackedNear(bx,by){

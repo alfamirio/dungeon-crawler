@@ -44,7 +44,7 @@
     // (setting .checked directly doesn't fire 'change', so no feedback loop) ----
     document.getElementById('toggleMusic').checked = !SFX.isMuted();
     document.getElementById('toggleGod').checked = player.godmode;
-    document.getElementById('toggleAmmo').checked = player.infiniteAmmo;
+    document.getElementById('toggleUnlockAll').checked = player.infiniteAmmo;
   }
 
   function buildMinimap(){

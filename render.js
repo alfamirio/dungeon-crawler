@@ -834,6 +834,117 @@
         ctx.fillText(label, ROOM_W/2, 56);
         ctx.restore();
       }
+    } else if(pz.kind==='detonate'){
+      for(const tgt of pz.targets){
+        if(tgt.destroyed) continue;
+        ctx.save();
+        ctx.translate(tgt.x, tgt.y);
+        ctx.shadowColor = COLORS.puzzleTarget;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = COLORS.puzzleTarget;
+        ctx.strokeStyle = COLORS.puzzleTargetEdge;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0,0,tgt.r,0,Math.PI*2);
+        ctx.fill(); ctx.stroke();
+        // crack lines so it reads as "fragile / bomb-only", not a pushable block
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = COLORS.puzzleTargetCrack;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(-tgt.r*0.5, -tgt.r*0.15);
+        ctx.lineTo(-tgt.r*0.08, tgt.r*0.35);
+        ctx.lineTo(tgt.r*0.4, -tgt.r*0.05);
+        ctx.moveTo(-tgt.r*0.08, tgt.r*0.35);
+        ctx.lineTo(tgt.r*0.12, tgt.r*0.6);
+        ctx.stroke();
+        ctx.restore();
+      }
+      if(!pz.solved){
+        const remaining = pz.targets.filter(t=>!t.destroyed).length;
+        ctx.save();
+        ctx.font = '600 15px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(217,220,227,0.75)';
+        ctx.fillText(`BOMB THE CRACKED URNS \u2014 ${remaining} LEFT`, ROOM_W/2, 56);
+        ctx.restore();
+      }
+    } else if(pz.kind==='snipe'){
+      for(let i=0;i<pz.switches.length;i++){
+        const sw = pz.switches[i];
+        let ringColor = COLORS.puzzleSnipeRingB, glow = 6;
+        if(pz.solved){
+          ringColor = COLORS.puzzleSwitchCorrect; glow = 14 + Math.sin(t*3)*4;
+        } else if(pz.flashSwitch === i){
+          if(pz.phase==='feedback') ringColor = pz.feedbackOk ? COLORS.puzzleSwitchCorrect : COLORS.puzzleSwitchWrong;
+          else ringColor = COLORS.puzzleSwitchLit;
+          glow = 18;
+        }
+        ctx.save();
+        ctx.translate(sw.x, sw.y);
+        ctx.shadowColor = ringColor;
+        ctx.shadowBlur = glow;
+        // concentric archery-target rings so it reads as "shoot me", not
+        // "walk up and hit me" like the regular switch pedestals
+        ctx.fillStyle = ringColor;
+        ctx.beginPath(); ctx.arc(0,0,sw.r,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = COLORS.puzzleSnipeRingA;
+        ctx.beginPath(); ctx.arc(0,0,sw.r*0.66,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = ringColor;
+        ctx.beginPath(); ctx.arc(0,0,sw.r*0.34,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0,0,sw.r,0,Math.PI*2); ctx.stroke();
+        ctx.restore();
+      }
+      if(!pz.solved){
+        ctx.save();
+        ctx.font = '600 15px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(217,220,227,0.75)';
+        const label = pz.phase==='showing' ? 'MEMORIZE THE SEQUENCE' : 'REPEAT IT \u2014 FIRE ARROWS IN ORDER';
+        ctx.fillText(label, ROOM_W/2, 56);
+        ctx.restore();
+      }
+    } else if(pz.kind==='rush'){
+      for(const p of pz.plates){
+        const active = p.timer>0;
+        const frac = active ? clamp(p.timer/pz.activeDuration, 0, 1) : 0;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        const color = active ? COLORS.puzzleRushActive : COLORS.puzzleRushPlate;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = active ? 10 + frac*10 : 5;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        if(!active) ctx.setLineDash([5,4]);
+        ctx.beginPath();
+        ctx.arc(0,0,p.r,0,Math.PI*2);
+        ctx.stroke();
+        if(active){
+          // countdown wedge showing how much of the lit window is left
+          ctx.setLineDash([]);
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 0.3;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(0,0);
+          ctx.arc(0,0,p.r*0.72, -Math.PI/2, -Math.PI/2 + Math.PI*2*frac);
+          ctx.closePath();
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+        ctx.restore();
+      }
+      if(!pz.solved){
+        ctx.save();
+        ctx.font = '600 15px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(217,220,227,0.75)';
+        ctx.fillText('DASH BETWEEN PLATES BEFORE THEY FADE', ROOM_W/2, 56);
+        ctx.restore();
+      }
     }
   }
 

@@ -39,14 +39,22 @@
           </label>
         </div>
         <div class="toggle-row">
-          <span>Infinite ammo</span>
+          <span>Unlock all</span>
           <label class="switch">
-            <input type="checkbox" id="toggleAmmo">
+            <input type="checkbox" id="toggleUnlockAll">
             <span class="slider"></span>
           </label>
         </div>
         <button class="sidebar-btn" id="btnClearRoom">Clear room</button>
         <button class="sidebar-btn" id="btnWarpBoss">Warp to boss</button>
+      </div>
+      <div class="panel-section">
+        <h3>Warp to Puzzle</h3>
+        <button class="sidebar-btn" id="btnWarpPush">Push puzzle</button>
+        <button class="sidebar-btn" id="btnWarpSwitch">Switch puzzle</button>
+        <button class="sidebar-btn" id="btnWarpDetonate">Detonate puzzle</button>
+        <button class="sidebar-btn" id="btnWarpSnipe">Snipe puzzle</button>
+        <button class="sidebar-btn" id="btnWarpRush">Rush puzzle</button>
       </div>
     </div>
     <div id="stage">
@@ -86,7 +94,7 @@
       <button id="restart">Retry</button>
     </div>
   </div>
-  <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; F: fire bow &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; E: dash &nbsp;&middot;&nbsp; M: mute audio &nbsp;&middot;&nbsp; walk into blocks to push them onto plates &nbsp;&middot;&nbsp; attack pedestals to repeat their sequence &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; L: debug bow + bomb bag + dash + infinite ammo &nbsp;&middot;&nbsp; Y: debug warp to boss</span></div>
+  <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; F: fire bow &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; E: dash &nbsp;&middot;&nbsp; M: mute audio &nbsp;&middot;&nbsp; walk into blocks to push them onto plates &nbsp;&middot;&nbsp; attack pedestals to repeat their sequence &nbsp;&middot;&nbsp; dash between timed plates before they fade &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; L: debug unlock all (bow + bomb bag + dash + key + infinite ammo) &nbsp;&middot;&nbsp; P: debug solve puzzle &nbsp;&middot;&nbsp; Y: debug warp to boss</span></div>
 </div>
 
 <script src="audio.js"></script>
