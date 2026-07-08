@@ -145,20 +145,6 @@
       attackDuration: 0.15,
       attackWidth: 48,
       attackHeight: 48,
-      eyeForwardOffset: 9,
-      eyeSpacing: 9,
-      eyeRadius: 7.3,
-      pupilRadius: 3.5,
-      pupilLead: 2.4,
-      hurtEyeDuration: 0.35,
-      hurtEyeScale: 1.45,
-      happyEyeDuration: 0.6,
-      tailLength: 17,
-      tailWidth: 6.5,
-      tailTipRadius: 4.3,
-      tailWagAmplitude: 8,
-      tailWagSpeedMoving: 9,
-      tailWagSpeedIdle: 3,
       shieldSpeedMultiplier: 0.55,
       shieldBlockDot: 0.3,
       shieldOffset: 29,
@@ -234,9 +220,8 @@
 
   const COLORS = {
     wall: hex('#3a4256'), wallLocked: hex('#8a2b2b'), wallCracked: hex('#55606e'), wallSealed: hex('#c97a2b'),
-    player: hex('#4fd1c5'), playerTail: hex('#3aa89e'),
+    player: hex('#4fd1c5'),
     sword: hex('#eef2f7'), swordEdge: hex('#aab4c4'),
-    eyeWhite: hex('#ffffff'), eyePupil: hex('#12141c'),
     chaser: hex('#e2555a'), turret: hex('#caa23a'), projectile: hex('#ffdd57'),
     bomb: hex('#111318'), bombFuse: hex('#ffb020'),
     chest: hex('#f4d35e'), chestSecret: hex('#7fd1a8'),
@@ -570,8 +555,7 @@
         hp: CONFIG.player.startHp, maxHp: CONFIG.player.maxHp,
         bombs: CONFIG.player.startBombs, maxBombs: CONFIG.player.maxBombs,
         hasKey: false, invuln: 0, attackCd: 0, attacking: 0,
-        godmode: false, hasShield: true, shielding: false,
-        hurtTimer: 0, happyTimer: 0
+        godmode: false, hasShield: true, shielding: false
       };
       this.bombs = [];
       this.projectiles = [];
@@ -634,7 +618,6 @@
       if(p.invuln > 0) return;
       p.hp = Math.max(0, p.hp - amount);
       p.invuln = CONFIG.player.invulnDuration;
-      p.hurtTimer = CONFIG.player.hurtEyeDuration;
       const e = CONFIG.effects;
       this.cameras.main.shake(e.hitShake, e.hitShakeMag);
       this.cameras.main.flash(180, 226, 85, 90);
@@ -837,8 +820,6 @@
       if(Phaser.Input.Keyboard.JustDown(k.dbgWarp)) this.warpToBossRoom();
 
       if(p.invuln > 0) p.invuln -= dt;
-      if(p.hurtTimer > 0) p.hurtTimer -= dt;
-      if(p.happyTimer > 0) p.happyTimer -= dt;
 
       for(let i = this.bombs.length - 1; i >= 0; i--){
         const b = this.bombs[i];
@@ -936,7 +917,6 @@
         const cx = ROOM_W / 2, cy = ROOM_H / 2;
         if(dist(p.x, p.y, cx, cy) < CONFIG.rooms.chestPickupRadius){
           roomInst.chestTaken = true;
-          p.happyTimer = CONFIG.player.happyEyeDuration;
           if(meta.type === 'key') p.hasKey = true;
           else if(meta.type === 'item'){
             p.maxBombs = Math.min(p.maxBombs + CONFIG.items.maxBombsIncrement, CONFIG.items.maxBombsCap);
@@ -1122,29 +1102,10 @@
       }
     }
 
-    drawTrackingEyes(g, cx, cy, r, dirx, diry){
-      const px = -diry, py = dirx;
-      const ef = r * 0.45, es = r * 0.45, er = r * 0.36, pr = r * 0.17, pl = r * 0.12;
-      for(const side of [-1, 1]){
-        const ex = cx + dirx * ef + px * es * side;
-        const ey = cy + diry * ef + py * es * side;
-        g.fillStyle(COLORS.eyeWhite, 1);
-        g.fillCircle(ex, ey, er);
-        g.lineStyle(1, 0x000000, 0.25);
-        g.strokeCircle(ex, ey, er);
-        g.fillStyle(COLORS.eyePupil, 1);
-        g.fillCircle(ex + dirx * pl, ey + diry * pl, pr);
-      }
-    }
-
     drawEnemies(g, t){
       for(const en of this.curInst().enemies){
         const flash = en.hitFlash > 0;
         const pulse = 1 + Math.sin(t * 4 + en.x) * 0.04;
-        const p = this.player;
-        const gdx = p.x - en.x, gdy = p.y - en.y;
-        const glen = Math.hypot(gdx, gdy) || 1;
-        const gx = gdx / glen, gy = gdy / glen;
 
         if(en.type === 'chaser'){
           const col = flash ? 0xffffff : COLORS.chaser;
@@ -1172,8 +1133,6 @@
           g.fillPoints(pts, true);
         }
 
-        this.drawTrackingEyes(g, en.x, en.y, en.r, gx, gy);
-
         if(en.type === 'boss'){
           const w = 60;
           g.fillStyle(0x000000, 0.53);
@@ -1197,26 +1156,8 @@
       const moving = p._moving;
       const bob = moving ? Math.sin(t * 10) * 2 : Math.sin(t * 2.2) * 1.5;
       const ep = CONFIG.player;
-      const dlen = Math.hypot(p.dir.x, p.dir.y) || 1;
-      const dx = p.dir.x / dlen, dy = p.dir.y / dlen;
-      const px = -dy, py = dx;
       const cx = p.x, cy = p.y + bob;
       const blink = p.invuln > 0 && Math.floor(p.invuln * 12) % 2 === 0;
-
-      // tail: a simple bent line (quadratic curve simplified to two
-      // segments) with a round tip
-      const wagSpeed = moving ? ep.tailWagSpeedMoving : ep.tailWagSpeedIdle;
-      const wagAmt = moving ? ep.tailWagAmplitude : ep.tailWagAmplitude * 0.4;
-      const wag = Math.sin(t * wagSpeed) * wagAmt;
-      const tbx = cx - dx * (p.w * 0.32), tby = cy - dy * (p.h * 0.32);
-      const tcx = cx - dx * (ep.tailLength * 0.55) + px * wag * 0.5, tcy = cy - dy * (ep.tailLength * 0.55) + py * wag * 0.5;
-      const ttx = cx - dx * ep.tailLength + px * wag, tty = cy - dy * ep.tailLength + py * wag;
-      g.lineStyle(ep.tailWidth, COLORS.playerTail, 1);
-      g.beginPath();
-      g.moveTo(tbx, tby); g.lineTo(tcx, tcy); g.lineTo(ttx, tty);
-      g.strokePath();
-      g.fillStyle(COLORS.playerTail, 1);
-      g.fillCircle(ttx, tty, ep.tailTipRadius);
 
       const biome = this.biomeNow();
       this.glow(g, cx, cy, p.w / 2, biome.glow, 0.35);
@@ -1229,35 +1170,6 @@
 
       g.fillStyle(0xffffff, 0.3);
       g.fillEllipse(cx - p.w * 0.22, cy - p.h * 0.26, p.w * 0.32, p.h * 0.2);
-
-      if(p.hurtTimer > 0){
-        for(const side of [-1, 1]){
-          const ex = cx + dx * ep.eyeForwardOffset + px * ep.eyeSpacing * side;
-          const ey = cy + dy * ep.eyeForwardOffset + py * ep.eyeSpacing * side;
-          g.fillStyle(COLORS.eyeWhite, 1);
-          g.fillCircle(ex, ey, ep.eyeRadius * ep.hurtEyeScale);
-          g.fillStyle(COLORS.eyePupil, 1);
-          g.fillCircle(ex, ey, ep.pupilRadius * 0.75);
-        }
-      } else if(p.happyTimer > 0){
-        g.lineStyle(2.2, COLORS.eyePupil, 1);
-        for(const side of [-1, 1]){
-          const ex = cx + dx * ep.eyeForwardOffset + px * ep.eyeSpacing * side;
-          const ey = cy + dy * ep.eyeForwardOffset + py * ep.eyeSpacing * side;
-          g.beginPath();
-          g.arc(ex, ey + 2, ep.eyeRadius * 0.8, Math.PI * 1.15, Math.PI * 1.85);
-          g.strokePath();
-        }
-      } else {
-        for(const side of [-1, 1]){
-          const ex = cx + dx * ep.eyeForwardOffset + px * ep.eyeSpacing * side;
-          const ey = cy + dy * ep.eyeForwardOffset + py * ep.eyeSpacing * side;
-          g.fillStyle(COLORS.eyeWhite, 1);
-          g.fillCircle(ex, ey, ep.eyeRadius);
-          g.fillStyle(COLORS.eyePupil, 1);
-          g.fillCircle(ex + dx * ep.pupilLead, ey + dy * ep.pupilLead, ep.pupilRadius);
-        }
-      }
 
       // sword swing: a stick pivoting across the facing direction
       if(p.attacking > 0){
