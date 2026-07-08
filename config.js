@@ -48,6 +48,8 @@
       tailWagSpeedIdle: 3,     // gentler wag speed while standing still
       shieldSpeedMultiplier: 0.7, // movement speed while holding shield up
       shieldBlockDot: 0.3,     // min facing-alignment (dot product) to count as a frontal block
+      shieldPushForce: 260,    // px/sec an eligible enemy is shoved backward per frame of continued shield contact
+      shieldPushTypes: ['chaser'], // enemy types light enough to be muscled backward by the shield (e.g. into a hole)
       shieldOffset: 29,        // distance of the shield in front of the player
       shieldWidth: 13,
       shieldHeight: 35,
@@ -237,6 +239,95 @@
       spacing: 18,              // minimum gap enforced between obstacles
       placementAttempts: 24
     },
+    // ----------------------------------------------------------------
+    // Room hazards: partial interior walls (short wall-like blocking
+    // segments that aren't full obstacles) and floor holes (impassable
+    // pits). Each has its own settings for normal fight/boss rooms
+    // ("battle") vs puzzle rooms ("puzzle"), since puzzle rooms need much
+    // more generous center clearance to avoid fouling plate/switch/target
+    // layouts (which are placed independently, without checking hazards).
+    // Set any countMax to 0 to disable a hazard type for that room kind.
+    // ----------------------------------------------------------------
+    hazards: {
+      // Fraction of a hole's radius the player/an enemy's center must be
+      // within to count as having fallen in (keeps grazing the rim safe).
+      fallThreshold: 0.55,
+      walls: {
+        battle: {
+          countMin: 0, countMax: 2,     // number of partial walls per room
+          lengthMin: 90, lengthMax: 200, // length along the wall's long axis
+          thickness: 22,
+          wallMargin: 70,                // keep-out margin from the room's outer walls
+          centerClearRadius: 90,         // keep-out radius from room center (the entry point)
+          spacing: 20,                   // min gap from obstacles/other hazards
+          placementAttempts: 24
+        },
+        puzzle: {
+          countMin: 0, countMax: 1,
+          lengthMin: 80, lengthMax: 160,
+          thickness: 22,
+          wallMargin: 90,
+          centerClearRadius: 170,        // wider clearance so puzzle layouts stay solvable
+          spacing: 24,
+          placementAttempts: 24
+        }
+      },
+      holes: {
+        battle: {
+          countMin: 0, countMax: 2,     // number of pits per room
+          radiusMin: 28, radiusMax: 48,
+          rectChance: 0.35,             // chance an individual pit is a rectangle instead of a circle
+          rectSizeMin: 56, rectSizeMax: 130, // w/h range (each picked independently) for rectangular pits
+          wallMargin: 70,
+          centerClearRadius: 90,
+          spacing: 20,
+          placementAttempts: 24
+        },
+        puzzle: {
+          countMin: 0, countMax: 1,
+          radiusMin: 26, radiusMax: 40,
+          rectChance: 0.35,
+          rectSizeMin: 52, rectSizeMax: 110,
+          wallMargin: 90,
+          centerClearRadius: 170,
+          spacing: 24,
+          placementAttempts: 24
+        }
+      },
+      // Moat: a rectangular ring of holes fully framing a rectangular
+      // "island" patch of floor elsewhere in the room (kept clear of the
+      // entry point) -- built from 4 rectangular hole segments (see
+      // makeMoatHoles() in room.js). Rolled independently of the regular
+      // pit hazard above, so a room can have both. `gapChance` controls
+      // how often one side of the ring gets a land-bridge opening of
+      // `gapWidth`; the rest of the time the ring is unbroken and the
+      // island is reachable only by dashing across (see CONFIG.player.dash*
+      // and the "dashing clears a pit" rule in update.js).
+      moat: {
+        battle: {
+          chance: 0.16,             // chance a battle-bucket room rolls a moat at all
+          islandSizeMin: 90, islandSizeMax: 160, // island w/h range (picked independently)
+          thickness: 30,             // width of the moat ring
+          wallMargin: 80,            // keep-out margin from the room's outer walls (outer ring edge)
+          centerClearRadius: 130,    // keep-out radius from room center (the entry point)
+          spacing: 20,
+          gapChance: 0.6,            // chance the ring gets a walkable bridge opening
+          gapWidth: 74,
+          placementAttempts: 20
+        },
+        puzzle: {
+          chance: 0,                // disabled by default -- puzzle layouts assume open floor
+          islandSizeMin: 90, islandSizeMax: 150,
+          thickness: 28,
+          wallMargin: 100,
+          centerClearRadius: 190,
+          spacing: 24,
+          gapChance: 0.6,
+          gapWidth: 70,
+          placementAttempts: 20
+        }
+      }
+    },
     decor: {
       cornerInset: 46,
       floorCountMin: 4,
@@ -281,12 +372,12 @@
         margin: 100               // keep-out margin from walls when placing targets
       },
       snipe: {
-        switchCount: 4,          // targets arranged around the room
-        switchRadius: 24,
-        sequenceLength: 4,       // number of hits needed to solve it
-        revealOnDuration: 0.5,   // how long each target stays lit during the memorize phase
-        revealGapDuration: 0.25, // pause between reveals
-        initialDelay: 0.6        // pause before the first reveal (on entry, and after a wrong guess)
+        targetRadius: 30,        // radius of the single target sitting on the island
+        islandSize: 130,         // width/height of the island patch of floor the target sits on
+        moatThickness: 34,       // width of the surrounding moat ring -- wide enough it can't be crossed on foot
+        wallMargin: 90,          // keep-out margin from the room's outer walls when placing the island
+        centerClearRadius: 150,  // keep-out radius from room center (the entry point / debug warp-in spot)
+        placementAttempts: 20    // random-placement tries before falling back to a centered island
       },
       rush: {
         plateCount: 3,           // plates spread around the room, all must be lit at once to solve
@@ -367,6 +458,10 @@
     chestBoss: '#e2555a',
     obstacle: '#2a2f3d',
     obstacleEdge: '#3a4256',
+    hazardWall: '#2e3342',
+    hazardWallEdge: '#454e66',
+    holeFill: '#07080c',
+    holeRim: 'rgba(0,0,0,0.55)',
     explosion: 'rgba(255,176,32,0.55)',
     puzzleBlock: '#5a6478',
     puzzleBlockEdge: '#3a4256',

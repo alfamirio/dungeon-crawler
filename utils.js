@@ -18,6 +18,28 @@
   function rectsOverlap(a,b){
     return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
   }
+
+  // Circle (cx,cy,r) vs axis-aligned rect overlap test -- used to keep
+  // circular enemies from walking through rectangular obstacles/walls,
+  // the same way rectsOverlap keeps the (rectangular) player out of them.
+  function circleRectOverlap(cx, cy, r, rect){
+    const nearestX = clamp(cx, rect.x, rect.x+rect.w);
+    const nearestY = clamp(cy, rect.y, rect.y+rect.h);
+    const dx = cx-nearestX, dy = cy-nearestY;
+    return (dx*dx + dy*dy) < r*r;
+  }
+
+  // True if a circle at (x,y) with radius r overlaps any solid obstacle in
+  // the list. Holes are deliberately excluded -- they're a fall hazard,
+  // not something that blocks movement (see holeAt/fallIntoHole).
+  function blockedByObstacle(x, y, r, obstacles){
+    if(!obstacles) return false;
+    for(const o of obstacles){
+      if(o.kind==='hole') continue;
+      if(circleRectOverlap(x, y, r, o)) return true;
+    }
+    return false;
+  }
   function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
   function lerp(a,b,t){ return a + (b-a)*t; }
   function dist(x1,y1,x2,y2){ return Math.hypot(x2-x1, y2-y1); }
@@ -34,12 +56,24 @@
   // Steps an enemy toward the player at `speed`. Pass an already-known
   // distance as `d` (most callers have just computed it for other logic);
   // omit it to have this compute distance itself. No-ops once adjacent.
-  function chaseToward(en, speed, dt, d){
+  // `obstacles` (optional -- pass the room's obstacle list) makes walls and
+  // furniture block the enemy the same way they block the player, resolved
+  // per-axis so an enemy sliding along a wall doesn't just stop dead.
+  // Holes are never blocking here (see blockedByObstacle).
+  function chaseToward(en, speed, dt, d, obstacles){
     if(d===undefined) d = dist(en.x,en.y,player.x,player.y);
     if(d>1){
       const vx = (player.x-en.x)/d, vy = (player.y-en.y)/d;
-      en.x += vx*speed*dt;
-      en.y += vy*speed*dt;
+      const nx = en.x + vx*speed*dt;
+      const ny = en.y + vy*speed*dt;
+      if(obstacles && obstacles.length){
+        let rx = en.x, ry = en.y;
+        if(!blockedByObstacle(nx, en.y, en.r, obstacles)) rx = nx;
+        if(!blockedByObstacle(rx, ny, en.r, obstacles)) ry = ny;
+        en.x = rx; en.y = ry;
+      } else {
+        en.x = nx; en.y = ny;
+      }
     }
   }
 
@@ -74,6 +108,30 @@
     return {x:ROOM_W/2, y:ROOM_H/2};
   }
   function choice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+  // Returns the hole object at (x,y) if the point sits deep enough inside
+  // it to count as "fallen in" (see CONFIG.hazards.fallThreshold, a
+  // fraction of the hole's radius/thickness -- so grazing the rim doesn't
+  // kill), or null if not over any hole. Handles both hole shapes: circular
+  // pits (shape:'circle', the original kind, checked by distance from
+  // center) and rectangular pits/moat segments (shape:'rect', checked by
+  // shrinking the rect inward on all sides by the same margin a circle
+  // would use). Shared by the player's and enemies' fall-death checks in
+  // update.js.
+  function holeAt(x, y, obstacles){
+    const ft = CONFIG.hazards.fallThreshold;
+    for(const o of obstacles){
+      if(o.kind!=='hole') continue;
+      if(o.shape==='rect'){
+        const margin = Math.min(o.w,o.h)*(1-ft)/2;
+        if(x > o.x+margin && x < o.x+o.w-margin && y > o.y+margin && y < o.y+o.h-margin) return o;
+      } else {
+        const cx = o.x+o.w/2, cy = o.y+o.h/2;
+        if(dist(x,y,cx,cy) < o.r*ft) return o;
+      }
+    }
+    return null;
+  }
 
   // Attempts to shove a push-puzzle block by (dx,dy) -- the same delta the
   // player just tried to move. Fails (returns false, leaving the block

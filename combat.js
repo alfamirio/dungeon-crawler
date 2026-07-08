@@ -64,6 +64,23 @@
     if(player.hp<=0){ gameOver = true; showMessage('You have fallen', 'press retry'); SFX.gameOver(); }
   }
 
+  // Instant death from walking (or being shield-pushed) over a floor hole.
+  // Bypasses invuln entirely -- it's an environmental hazard, not an
+  // attack -- but godmode and mid-dash both still save the player (see the
+  // call site in update.js), so dashing across a pit is a legitimate way
+  // to cross one.
+  function fallIntoHole(){
+    if(gameOver) return;
+    player.hp = 0;
+    gameOver = true;
+    shake = Math.max(shake, CONFIG.effects.bombShake);
+    hitStop = CONFIG.effects.bombHitStop;
+    flash = 1; flashColor = '10,10,14';
+    spawnParticles(player.x, player.y, '#000000', 26);
+    showMessage('You fell into the pit', 'press retry');
+    SFX.gameOver();
+  }
+
   // Scores how well the player just handled a fight (0 = rough, 1 = flawless
   // and fast) and nudges skill.factor toward harder or easier accordingly.
   // Called once, right when a fight room's last enemy falls.
@@ -228,8 +245,8 @@
         if(!pz.blocks.some(b => dist(b.x+b.w/2,b.y+b.h/2,p.x,p.y) <= snap)){ allOn = false; break; }
       }
       if(allOn) solvePuzzleRoom(inst);
-    } else if(pz.kind==='switch' || pz.kind==='snipe'){
-      const sc = pz.kind==='snipe' ? CONFIG.puzzles.snipe : CONFIG.puzzles.switchPuzzle;
+    } else if(pz.kind==='switch'){
+      const sc = CONFIG.puzzles.switchPuzzle;
       if(pz.phase==='showing'){
         pz.revealTimer -= dt;
         if(pz.revealTimer<=0){
@@ -282,7 +299,7 @@
   // while the puzzle is actually waiting for input.
   function pressSwitch(inst, idx){
     const pz = inst.puzzle;
-    if(!pz || (pz.kind!=='switch' && pz.kind!=='snipe') || pz.solved || pz.phase!=='input') return;
+    if(!pz || pz.kind!=='switch' || pz.solved || pz.phase!=='input') return;
     if(pz.sequence[pz.step] === idx){
       pz.step++;
       pz.flashSwitch = idx;
@@ -298,6 +315,16 @@
       pz.revealTimer = 0.4;
       SFX.puzzleWrong();
     }
+  }
+
+  // The snipe-puzzle target was struck by an arrow fired across its moat.
+  // There's no sequence to track -- one solid hit solves the room on the
+  // spot, same reward flow as any other puzzle (see solvePuzzleRoom()).
+  function hitSnipeTarget(inst){
+    const pz = inst.puzzle;
+    if(!pz || pz.kind!=='snipe' || pz.solved || pz.target.hit) return;
+    pz.target.hit = true;
+    solvePuzzleRoom(inst);
   }
 
   // Checks a bomb-blast position/radius against the current room's

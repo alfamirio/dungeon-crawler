@@ -13,7 +13,7 @@
     if(!inst.visited) stats.roomsVisited++;
     inst.visited = true;
     if(!inst.enemiesBuilt){
-      inst.enemies = makeEnemies(inst.meta.type, inst.meta.dist, skill.factor);
+      inst.enemies = makeEnemies(inst.meta.type, inst.meta.dist, skill.factor, inst.obstacles);
       inst.enemyCountAtStart = inst.enemies.length;
       inst.enemiesBuilt = true;
     }
@@ -45,6 +45,16 @@
     const bossMeta = [...dungeon.rooms.values()].find(m => m.type==='boss');
     if(!bossMeta) return;
     current = {x: bossMeta.x, y: bossMeta.y};
+    enterRoom();
+    player.x = ROOM_W/2;
+    player.y = ROOM_H/2;
+  }
+
+  // DEBUG: warp straight back to the initial (start) room, dropping the
+  // player at its center. Shares the same enterRoom() plumbing as the
+  // other warps, so revisiting stats/minimap stay consistent.
+  function warpToStartRoom(){
+    current = {x: 0, y: 0};
     enterRoom();
     player.x = ROOM_W/2;
     player.y = ROOM_H/2;
@@ -132,6 +142,7 @@
   });
   document.getElementById('btnClearRoom').addEventListener('click', debugKillRoom);
   document.getElementById('btnWarpBoss').addEventListener('click', warpToBossRoom);
+  document.getElementById('btnWarpStart').addEventListener('click', warpToStartRoom);
   document.getElementById('btnWarpPush').addEventListener('click', () => warpToPuzzleRoom('push'));
   document.getElementById('btnWarpSwitch').addEventListener('click', () => warpToPuzzleRoom('switch'));
   document.getElementById('btnWarpDetonate').addEventListener('click', () => warpToPuzzleRoom('detonate'));
@@ -190,12 +201,14 @@
     const nx = player.x + mx*moveSpeed*dt;
     const ny = player.y + my*moveSpeed*dt;
 
-    // obstacle collision (simple AABB resolve, axis separated)
+    // obstacle collision (simple AABB resolve, axis separated). Holes are
+    // deliberately excluded here -- they're a fall hazard, not a wall, so
+    // the player can walk out over one (see the fall-in check below).
     const inst = curInst();
     const hasPushBlocks = inst.puzzle && inst.puzzle.kind==='push';
     let px = nx, py = player.y;
     const pRectX = {x:px-player.w/2, y:py-player.h/2, w:player.w, h:player.h};
-    for(const o of inst.obstacles){ if(rectsOverlap(pRectX,o)){ px = player.x; break; } }
+    for(const o of inst.obstacles){ if(o.kind!=='hole' && rectsOverlap(pRectX,o)){ px = player.x; break; } }
     if(hasPushBlocks){
       for(const b of inst.puzzle.blocks){
         if(rectsOverlap({x:px-player.w/2, y:py-player.h/2, w:player.w, h:player.h}, b)){
@@ -205,7 +218,7 @@
     }
     let py2 = ny;
     const pRectY = {x:px-player.w/2, y:py2-player.h/2, w:player.w, h:player.h};
-    for(const o of inst.obstacles){ if(rectsOverlap(pRectY,o)){ py2 = player.y; break; } }
+    for(const o of inst.obstacles){ if(o.kind!=='hole' && rectsOverlap(pRectY,o)){ py2 = player.y; break; } }
     if(hasPushBlocks){
       for(const b of inst.puzzle.blocks){
         if(rectsOverlap({x:px-player.w/2, y:py2-player.h/2, w:player.w, h:player.h}, b)){
@@ -214,6 +227,14 @@
       }
     }
     player.x = px; player.y = py2;
+
+    // fall hazard: walking (or being pushed) far enough over a hole is
+    // instant death, unless mid-dash (dashing clears a pit) or invincible
+    if(!player.godmode && player.dashing<=0){
+      const hole = holeAt(player.x, player.y, inst.obstacles);
+      if(hole) fallIntoHole();
+    }
+
 
     // room bounds / door transitions
     const gapY = [(ROOM_H-DOOR_GAP)/2, (ROOM_H+DOOR_GAP)/2];
@@ -333,6 +354,13 @@
     }
     if(!keys['KeyY']) player._debugWarpLock = false;
 
+    // DEBUG: H key warps directly back to the initial (start) room
+    if(keys['KeyH'] && !player._debugWarpStartLock){
+      player._debugWarpStartLock = true;
+      warpToStartRoom();
+    }
+    if(!keys['KeyH']) player._debugWarpStartLock = false;
+
     // invuln timer
     if(player.invuln>0) player.invuln -= dt;
     if(player.hurtTimer>0) player.hurtTimer -= dt;
@@ -378,7 +406,7 @@
         continue;
       }
       if(en.type==='chaser'){
-        chaseToward(en, en.speed, dt);
+        chaseToward(en, en.speed, dt, undefined, roomInst.obstacles);
       } else if(en.type==='boss'){
         const bc = CONFIG.enemies.boss;
         const d = dist(en.x,en.y,player.x,player.y);
@@ -427,7 +455,7 @@
           // chase the player the rest of the time (slows to a stalk while
           // mid-barrage so the lobs read clearly)
           const bossSpeed = en.grenadeBarrageLeft>0 ? en.speed*0.35 : en.speed;
-          chaseToward(en, bossSpeed, dt, d);
+          chaseToward(en, bossSpeed, dt, d, roomInst.obstacles);
         }
       } else if(en.type==='turret'){
         tickCooldown(en, 'shootCd', dt, CONFIG.enemies.turret.shootCooldown, () => {
@@ -444,14 +472,14 @@
         const d = dist(en.x,en.y,player.x,player.y);
         if(!en.armed){
           // rushes the player like a regular chaser until close enough to arm
-          chaseToward(en, en.speed, dt, d);
+          chaseToward(en, en.speed, dt, d, roomInst.obstacles);
           if(d <= bc.triggerDistance){
             en.armed = true;
             en.fuse = bc.fuseTime;
           }
         } else {
           // still lunges forward while armed, for extra threat during the fuse
-          chaseToward(en, en.speed*0.6, dt, d);
+          chaseToward(en, en.speed*0.6, dt, d, roomInst.obstacles);
           en.fuse -= dt;
           if(en.fuse<=0){
             spawnParticles(en.x,en.y, COLORS.bomberChaser, 28);
@@ -470,7 +498,7 @@
         const d = dist(en.x,en.y,player.x,player.y);
         // closes the gap until just inside chain range, then holds position
         if(d > cc.chainRange*0.85){
-          chaseToward(en, en.speed, dt, d);
+          chaseToward(en, en.speed, dt, d, roomInst.obstacles);
         }
         if(en.chainSwing>0) en.chainSwing -= dt;
         tickCooldown(en, 'shootCd', dt, cc.chainCooldown, () => {
@@ -491,7 +519,8 @@
       const pushDist = en.r + player.w/2;
       let pd = dist(en.x,en.y,player.x,player.y);
       if(pd < pushDist){
-        if(isShieldBlocking(en.x,en.y)){
+        const shieldBlock = isShieldBlocking(en.x,en.y);
+        if(shieldBlock){
           if(!(en._blockCd>0)){
             spawnBlockSpark(en.x,en.y);
             en._blockCd = 0.12;
@@ -505,10 +534,36 @@
         let dx = en.x-player.x, dy = en.y-player.y;
         if(pd < 0.001){ dx = 1; dy = 0; pd = 1; }
         const nx = dx/pd, ny = dy/pd;
-        en.x = player.x + nx*pushDist;
-        en.y = player.y + ny*pushDist;
+        // Holding the shield against an eligible (small/light) enemy type
+        // shoves it back further each frame of continued contact -- unlike
+        // the passive "just resolve the overlap" push above, this lets the
+        // player actively bulldoze e.g. a chaser across the room and, if
+        // there's a hole nearby, straight into it. Holes are deliberately
+        // NOT solid here (that's the whole point of shoving something into
+        // one) but walls/furniture are, via blockedByObstacle, so this
+        // can't shove an enemy through a wall.
+        const extraPush = (shieldBlock && CONFIG.player.shieldPushTypes.includes(en.type))
+          ? CONFIG.player.shieldPushForce*dt : 0;
+        const pushX = player.x + nx*(pushDist+extraPush);
+        const pushY = player.y + ny*(pushDist+extraPush);
+        if(!blockedByObstacle(pushX, en.y, en.r, roomInst.obstacles)) en.x = pushX;
+        if(!blockedByObstacle(en.x, pushY, en.r, roomInst.obstacles)) en.y = pushY;
         en.x = clamp(en.x, en.r, ROOM_W-en.r);
         en.y = clamp(en.y, en.r, ROOM_H-en.r);
+      }
+
+      // fall hazard: any enemy that ends up substantially over a floor
+      // hole falls in and dies instantly. The boss is exempt -- it's far
+      // too large to plausibly fall through one.
+      if(en.type!=='boss'){
+        const hole = holeAt(en.x, en.y, roomInst.obstacles);
+        if(hole){
+          spawnParticles(en.x,en.y,'#000000',16);
+          SFX.enemyDeath();
+          stats.enemiesKilled++;
+          roomInst.enemies.splice(i,1);
+          continue;
+        }
       }
     }
 
@@ -571,6 +626,14 @@
         if(p.life<=0){ projectiles.splice(i,1); continue; }
       }
       if(p.x<0||p.x>ROOM_W||p.y<0||p.y>ROOM_H){ projectiles.splice(i,1); continue; }
+      // solid obstacles/walls block projectiles like they do arrows; floor
+      // holes don't -- a bullet flies straight over a pit same as an arrow.
+      let blockedByWall = false;
+      for(const o of curInst().obstacles){
+        if(o.kind==='hole') continue;
+        if(p.x>o.x && p.x<o.x+o.w && p.y>o.y && p.y<o.y+o.h){ blockedByWall = true; break; }
+      }
+      if(blockedByWall){ projectiles.splice(i,1); continue; }
       if(dist(p.x,p.y,player.x,player.y) < p.r+player.w/2){
         if(isShieldBlocking(p.x,p.y)){
           spawnBlockSpark(p.x,p.y);
@@ -604,22 +667,20 @@
         }
       }
       if(hit){ arrows.splice(i,1); continue; }
-      // snipe-puzzle pedestals: only arrows trigger these (melee doesn't --
-      // see the attack handler above), sharing the same pressSwitch()
-      // sequence logic as the regular switch puzzle
+      // snipe-puzzle target: only an arrow can trigger this (melee doesn't
+      // -- see the attack handler above, and the moat keeps the player
+      // from just walking up to it anyway)
       const snipeInst = curInst();
-      if(snipeInst.puzzle && snipeInst.puzzle.kind==='snipe'){
-        for(let si=0; si<snipeInst.puzzle.switches.length; si++){
-          const sw = snipeInst.puzzle.switches[si];
-          if(dist(a.x,a.y,sw.x,sw.y) < sw.r + CONFIG.player.arrowWidth){
-            pressSwitch(snipeInst, si);
-            hit = true;
-            break;
-          }
+      if(snipeInst.puzzle && snipeInst.puzzle.kind==='snipe' && !snipeInst.puzzle.solved){
+        const tgt = snipeInst.puzzle.target;
+        if(dist(a.x,a.y,tgt.x,tgt.y) < tgt.r + CONFIG.player.arrowWidth){
+          hitSnipeTarget(snipeInst);
+          hit = true;
         }
       }
       if(hit){ arrows.splice(i,1); continue; }
       for(const o of curInst().obstacles){
+        if(o.kind==='hole') continue; // pits don't block arrows -- they fly straight over
         if(a.x>o.x && a.x<o.x+o.w && a.y>o.y && a.y<o.y+o.h){ arrows.splice(i,1); break; }
       }
     }
@@ -725,4 +786,3 @@
 
     updateHud();
   }
-

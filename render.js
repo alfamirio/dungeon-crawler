@@ -203,11 +203,124 @@
     };
   }
 
-  function drawObstacle(o){
-    const biome = o.biome;
+  // Partial interior wall: rendered like a fragment of the room's own
+  // walls (flat fill + a subtle top/bottom bevel) so it reads as "this is
+  // a wall", not a piece of destructible scenery.
+  function drawPartialWall(o, roomBiome){
+    ctx.save();
+    const color = roomBiome ? roomBiome.wall : COLORS.hazardWall;
+    ctx.fillStyle = color;
+    ctx.fillRect(o.x,o.y,o.w,o.h);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    if(o.w >= o.h) ctx.fillRect(o.x,o.y,o.w,3);
+    else ctx.fillRect(o.x,o.y,3,o.h);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    if(o.w >= o.h) ctx.fillRect(o.x,o.y+o.h-3,o.w,3);
+    else ctx.fillRect(o.x+o.w-3,o.y,3,o.h);
+    ctx.strokeStyle = COLORS.hazardWallEdge;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(o.x,o.y,o.w,o.h);
+    ctx.restore();
+  }
+
+  // Floor hole: a ring of loose rock/masonry rubble framing the edge (drawn
+  // first, at the seeded stable positions makeHoles() gave the hole -- same
+  // trick as the lava obstacle's jagged silhouette), then a dark void with
+  // an inward rim shadow on top, so it reads as a broken-open pit in the
+  // floor rather than an object sitting on it.
+  function drawHole(o){
+    ctx.save();
+    const cx = o.x+o.w/2, cy = o.y+o.h/2, r = o.r;
+    const rnd = mulberry32(Math.floor(o.seed||0));
+    const chunkCount = Math.max(10, Math.round(r/6));
+    for(let i=0;i<chunkCount;i++){
+      const a = (i/chunkCount)*Math.PI*2 + rnd()*0.2;
+      const rr = r - 3 + rnd()*11; // straddles the rim: some chunks crumbling inward, some sitting proud outside
+      const size = 7+rnd()*8;
+      ctx.save();
+      ctx.translate(cx+Math.cos(a)*rr, cy+Math.sin(a)*rr);
+      ctx.rotate(a + rnd()*0.6 - 0.3);
+      ctx.fillStyle = COLORS.obstacle;
+      ctx.beginPath();
+      ctx.moveTo(-size*0.5,-size*0.35);
+      ctx.lineTo(size*0.55,-size*0.3);
+      ctx.lineTo(size*0.4,size*0.4);
+      ctx.lineTo(-size*0.45,size*0.35);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = COLORS.obstacleEdge;
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+      ctx.restore();
+    }
+    const grad = ctx.createRadialGradient(cx,cy,r*0.15, cx,cy,r);
+    grad.addColorStop(0, COLORS.holeFill);
+    grad.addColorStop(1, '#000000');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = COLORS.holeRim;
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(cx,cy,r-2,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+
+  // Rectangular floor hole / moat segment: same rubble-rim-over-void
+  // treatment as the circular pit (drawHole), just built from a rounded
+  // rect footprint instead of a circle so moat segments and rectangular
+  // pits read as one continuous void where they're placed edge-to-edge.
+  function drawHoleRect(o){
+    ctx.save();
+    const rnd = mulberry32(Math.floor(o.seed||0));
+    const cx = o.x+o.w/2, cy = o.y+o.h/2;
+    const perim = 2*(o.w+o.h);
+    const chunkCount = Math.max(8, Math.round(perim/16));
+    for(let i=0;i<chunkCount;i++){
+      const t = i/chunkCount;
+      // walk a point around the rect's perimeter (0..1 -> top, right, bottom, left)
+      let px, py;
+      const p = t*perim;
+      if(p < o.w){ px = o.x+p; py = o.y; }
+      else if(p < o.w+o.h){ px = o.x+o.w; py = o.y+(p-o.w); }
+      else if(p < o.w*2+o.h){ px = o.x+o.w-(p-o.w-o.h); py = o.y+o.h; }
+      else { px = o.x; py = o.y+o.h-(p-o.w*2-o.h); }
+      const jitter = 6;
+      px += (rnd()-0.5)*jitter*2; py += (rnd()-0.5)*jitter*2;
+      const size = 7+rnd()*8;
+      const a = rnd()*Math.PI*2;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(a);
+      ctx.fillStyle = COLORS.obstacle;
+      ctx.beginPath();
+      ctx.moveTo(-size*0.5,-size*0.35);
+      ctx.lineTo(size*0.55,-size*0.3);
+      ctx.lineTo(size*0.4,size*0.4);
+      ctx.lineTo(-size*0.45,size*0.35);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = COLORS.obstacleEdge;
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+      ctx.restore();
+    }
+    const grad = ctx.createRadialGradient(cx,cy,Math.min(o.w,o.h)*0.1, cx,cy,Math.max(o.w,o.h)*0.7);
+    grad.addColorStop(0, COLORS.holeFill);
+    grad.addColorStop(1, '#000000');
+    ctx.fillStyle = grad;
+    ctx.fillRect(o.x,o.y,o.w,o.h);
+    ctx.strokeStyle = COLORS.holeRim;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(o.x+2,o.y+2,o.w-4,o.h-4);
+    ctx.restore();
+  }
+
+  function drawObstacle(o, roomBiome){
+    if(o.kind==='wall'){ drawPartialWall(o, roomBiome); return; }
+    if(o.kind==='hole'){ (o.shape==='rect' ? drawHoleRect : drawHole)(o); return; }
+    const biomeKey = o.biome;
     ctx.save();
     const cx = o.x+o.w/2, cy = o.y+o.h/2;
-    if(biome==='roots'){
+    if(biomeKey==='roots'){
       // organic shapes: cluster of circles
       ctx.fillStyle = COLORS.obstacle;
       ctx.beginPath(); ctx.arc(cx,cy, Math.min(o.w,o.h)/2, 0, Math.PI*2); ctx.fill();
@@ -215,7 +328,7 @@
       ctx.beginPath(); ctx.arc(o.x+o.w*0.75, o.y+o.h*0.7, o.w*0.24, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#7ad14f55'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.arc(cx,cy, Math.min(o.w,o.h)/2, 0, Math.PI*2); ctx.stroke();
-    } else if(biome==='ice'){
+    } else if(biomeKey==='ice'){
       // angular crystal (diamond with facet)
       ctx.fillStyle = COLORS.obstacle;
       ctx.beginPath();
@@ -224,7 +337,7 @@
       ctx.strokeStyle = '#bfe9ffaa'; ctx.lineWidth=1.5;
       ctx.beginPath(); ctx.moveTo(cx,o.y); ctx.lineTo(cx,o.y+o.h); ctx.stroke();
       ctx.stroke();
-    } else if(biome==='lava'){
+    } else if(biomeKey==='lava'){
       // irregular rock with glow on the top edge
       const rnd = mulberry32(Math.floor(o.seed));
       ctx.fillStyle = COLORS.obstacle;
@@ -238,7 +351,7 @@
       }
       ctx.closePath(); ctx.fill();
       ctx.strokeStyle = '#ff8a4d88'; ctx.lineWidth=2; ctx.stroke();
-    } else if(biome==='desert'){
+    } else if(biomeKey==='desert'){
       // rounded sandstone boulder
       ctx.fillStyle = COLORS.obstacle;
       ctx.beginPath(); ctx.ellipse(cx,cy, o.w/2, o.h/2*0.85, 0, 0, Math.PI*2); ctx.fill();
@@ -246,7 +359,7 @@
       ctx.beginPath(); ctx.ellipse(cx,cy, o.w/2, o.h/2*0.85, 0, 0, Math.PI*2); ctx.stroke();
       ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth=1;
       ctx.beginPath(); ctx.moveTo(o.x+o.w*0.2, cy); ctx.quadraticCurveTo(cx, cy-o.h*0.15, o.x+o.w*0.8, cy); ctx.stroke();
-    } else if(biome==='cave'){
+    } else if(biomeKey==='cave'){
       // jagged stalagmite rising from the floor
       ctx.fillStyle = COLORS.obstacle;
       ctx.beginPath();
@@ -257,7 +370,7 @@
       ctx.lineTo(o.x+o.w*0.2, o.y+o.h*0.4);
       ctx.closePath(); ctx.fill();
       ctx.strokeStyle = COLORS.obstacleEdge; ctx.lineWidth=2; ctx.stroke();
-    } else if(biome==='graveyard'){
+    } else if(biomeKey==='graveyard'){
       // tombstone with a rounded top and carved cross
       ctx.fillStyle = COLORS.obstacle;
       ctx.beginPath();
@@ -272,14 +385,14 @@
       ctx.moveTo(cx, o.y+o.h*0.35); ctx.lineTo(cx, o.y+o.h*0.75);
       ctx.moveTo(cx-o.w*0.15, o.y+o.h*0.5); ctx.lineTo(cx+o.w*0.15, o.y+o.h*0.5);
       ctx.stroke();
-    } else if(biome==='alien'){
+    } else if(biomeKey==='alien'){
       // pulsing alien pod with a soft glowing core
       ctx.fillStyle = COLORS.obstacle;
       ctx.beginPath(); ctx.ellipse(cx,cy, o.w/2, o.h/2, 0, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#a6ff9a88'; ctx.lineWidth=2; ctx.stroke();
       ctx.fillStyle = 'rgba(166,255,154,0.35)';
       ctx.beginPath(); ctx.ellipse(cx,cy, o.w*0.22, o.h*0.22, 0, 0, Math.PI*2); ctx.fill();
-    } else if(biome==='island'){
+    } else if(biomeKey==='island'){
       // coral rock cluster
       ctx.fillStyle = COLORS.obstacle;
       ctx.beginPath(); ctx.arc(cx,cy, Math.min(o.w,o.h)/2, 0, Math.PI*2); ctx.fill();
@@ -287,7 +400,7 @@
       ctx.beginPath(); ctx.arc(o.x+o.w*0.72, o.y+o.h*0.75, o.w*0.2, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#4de0c955'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.arc(cx,cy, Math.min(o.w,o.h)/2, 0, Math.PI*2); ctx.stroke();
-    } else if(biome==='temple'){
+    } else if(biomeKey==='temple'){
       // carved stone pillar fragment
       ctx.fillStyle = COLORS.obstacle;
       ctx.fillRect(o.x,o.y,o.w,o.h);
@@ -296,7 +409,7 @@
         ctx.beginPath(); ctx.moveTo(fx,o.y+3); ctx.lineTo(fx,o.y+o.h-3); ctx.stroke();
       }
       ctx.strokeStyle = COLORS.obstacleEdge; ctx.lineWidth=2; ctx.strokeRect(o.x,o.y,o.w,o.h);
-    } else if(biome==='neon'){
+    } else if(biomeKey==='neon'){
       // glowing holographic pillar
       ctx.save();
       ctx.shadowColor = '#ff4fd1'; ctx.shadowBlur = 12;
@@ -305,7 +418,7 @@
       ctx.fillStyle = 'rgba(79,240,255,0.12)';
       ctx.fillRect(o.x,o.y,o.w,o.h);
       ctx.restore();
-    } else if(biome==='factory'){
+    } else if(biomeKey==='factory'){
       // riveted metal crate
       ctx.fillStyle = COLORS.obstacle;
       ctx.fillRect(o.x,o.y,o.w,o.h);
@@ -614,9 +727,10 @@
       else drawWallSide(d.name, st, biome);
     }
 
-    // obstacles: shape depends on biome
+    // obstacles: shape depends on biome; partial walls/holes render as
+    // their own hazard style regardless of biome (see drawObstacle)
     for(const o of inst.obstacles){
-      drawObstacle(o);
+      drawObstacle(o, biome);
     }
 
     // puzzle elements (push-blocks/plates, or switch pedestals + sequence hint)
@@ -870,41 +984,35 @@
         ctx.restore();
       }
     } else if(pz.kind==='snipe'){
-      for(let i=0;i<pz.switches.length;i++){
-        const sw = pz.switches[i];
-        let ringColor = COLORS.puzzleSnipeRingB, glow = 6;
-        if(pz.solved){
-          ringColor = COLORS.puzzleSwitchCorrect; glow = 14 + Math.sin(t*3)*4;
-        } else if(pz.flashSwitch === i){
-          if(pz.phase==='feedback') ringColor = pz.feedbackOk ? COLORS.puzzleSwitchCorrect : COLORS.puzzleSwitchWrong;
-          else ringColor = COLORS.puzzleSwitchLit;
-          glow = 18;
-        }
-        ctx.save();
-        ctx.translate(sw.x, sw.y);
-        ctx.shadowColor = ringColor;
-        ctx.shadowBlur = glow;
-        // concentric archery-target rings so it reads as "shoot me", not
-        // "walk up and hit me" like the regular switch pedestals
-        ctx.fillStyle = ringColor;
-        ctx.beginPath(); ctx.arc(0,0,sw.r,0,Math.PI*2); ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = COLORS.puzzleSnipeRingA;
-        ctx.beginPath(); ctx.arc(0,0,sw.r*0.66,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle = ringColor;
-        ctx.beginPath(); ctx.arc(0,0,sw.r*0.34,0,Math.PI*2); ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(0,0,sw.r,0,Math.PI*2); ctx.stroke();
-        ctx.restore();
+      const tgt = pz.target;
+      let ringColor = COLORS.puzzleSnipeRingB, glow = 6;
+      if(pz.solved || tgt.hit){
+        ringColor = COLORS.puzzleSwitchCorrect; glow = 14 + Math.sin(t*3)*4;
       }
+      ctx.save();
+      ctx.translate(tgt.x, tgt.y);
+      ctx.shadowColor = ringColor;
+      ctx.shadowBlur = glow;
+      // concentric archery-target rings so it reads as "shoot me", not
+      // "walk up and hit me" -- reinforced by the moat actually stopping
+      // the player from reaching it on foot
+      ctx.fillStyle = ringColor;
+      ctx.beginPath(); ctx.arc(0,0,tgt.r,0,Math.PI*2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = COLORS.puzzleSnipeRingA;
+      ctx.beginPath(); ctx.arc(0,0,tgt.r*0.66,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = ringColor;
+      ctx.beginPath(); ctx.arc(0,0,tgt.r*0.34,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0,0,tgt.r,0,Math.PI*2); ctx.stroke();
+      ctx.restore();
       if(!pz.solved){
         ctx.save();
         ctx.font = '600 15px "Segoe UI", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillStyle = 'rgba(217,220,227,0.75)';
-        const label = pz.phase==='showing' ? 'MEMORIZE THE SEQUENCE' : 'REPEAT IT \u2014 FIRE ARROWS IN ORDER';
-        ctx.fillText(label, ROOM_W/2, 56);
+        ctx.fillText('SHOOT THE TARGET ACROSS THE MOAT', ROOM_W/2, 56);
         ctx.restore();
       }
     } else if(pz.kind==='rush'){
