@@ -17,6 +17,7 @@
         <div class="stat-row"><span>Enemies defeated</span><span id="statKills">0</span></div>
         <div class="stat-row"><span>Bombs used</span><span id="statBombs">0</span></div>
         <div class="stat-row"><span>Arrows fired</span><span id="statArrows">0</span></div>
+        <div class="stat-row"><span>Dashes used</span><span id="statDashes">0</span></div>
         <div class="stat-row"><span>Depth</span><span id="statDepth">0</span></div>
         <div class="stat-row"><span>Biome</span><span id="statBiome">&mdash;</span></div>
         <div class="stat-row"><span>Difficulty</span><span id="statDifficulty">&mdash;</span></div>
@@ -70,6 +71,10 @@
               <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="#f4d35e" stroke-width="2" stroke-dasharray="3 2"/></svg>
               <span style="color:#f4d35e; letter-spacing:1px; text-transform:uppercase; font-size:11px;">invincible</span>
             </div>
+            <div class="res-item" id="dashWrap" style="display:none;">
+              <svg width="16" height="16"><path d="M2 3 L9 8 L2 13 M7 3 L14 8 L7 13" fill="none" stroke="var(--accent2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span id="dashStatus">ready</span>
+            </div>
           </div>
         </div>
         <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
@@ -81,7 +86,7 @@
       <button id="restart">Retry</button>
     </div>
   </div>
-  <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; F: fire bow &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; M: mute audio &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; L: debug bow + bomb bag + infinite ammo &nbsp;&middot;&nbsp; Y: debug warp to boss</span></div>
+  <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; F: fire bow &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; E: dash &nbsp;&middot;&nbsp; M: mute audio &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; L: debug bow + bomb bag + dash + infinite ammo &nbsp;&middot;&nbsp; Y: debug warp to boss</span></div>
 </div>
 
 <script src="audio.js"></script>

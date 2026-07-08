@@ -15,6 +15,7 @@ Double-click `index.html`, or open it in any modern browser. That's it.
 | F              | Fire bow            |
 | Shift          | Raise shield        |
 | B              | Place bomb          |
+| E              | Dash (once found)   |
 | M              | Mute/unmute audio   |
 
 Debug keys:
@@ -23,7 +24,7 @@ Debug keys:
 |-----|--------------------------------------|
 | K   | Kill all enemies in current room     |
 | I   | Toggle invincibility                 |
-| L   | Grant bow + bomb bag + infinite ammo |
+| L   | Grant bow + bomb bag + dash + infinite ammo |
 | Y   | Warp to the boss room                |
 
 ## Project structure
@@ -44,6 +45,10 @@ The game logic is split into 9 scripts, loaded by `index.html` in dependency ord
 | `main.js`       | HUD (hearts, resources, minimap, biome label) and the main `requestAnimationFrame` loop |
 
 Because everything shares one global scope, load order in `index.html` matters — each file assumes the ones before it have already run.
+
+## Skill pickups
+
+The bow, bomb bag, and dash are each found once per run as a pickup sitting out in the open in a dedicated normal room — grabbable as soon as you enter, even before that room's fight is cleared. Dash (**E**) is a short burst of speed in the direction you're facing, with brief invulnerability while it's active, on a ~0.9s cooldown.
 
 ## Sidebar
 

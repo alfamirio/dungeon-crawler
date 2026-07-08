@@ -721,6 +721,20 @@
         ctx.strokeStyle = '#00000055'; ctx.lineWidth = 1.5; ctx.stroke();
         ctx.fillStyle = '#3a2a18';
         ctx.beginPath(); ctx.arc(0,-9,3,0,Math.PI*2); ctx.fill();
+      } else if(inst.skillItem==='dash'){
+        ctx.shadowColor = COLORS.dash; ctx.shadowBlur = 16 + Math.sin(t*3)*5;
+        ctx.strokeStyle = COLORS.dash;
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for(let i=0;i<3;i++){
+          const ox = -11 + i*8;
+          ctx.beginPath();
+          ctx.moveTo(ox-4, -9);
+          ctx.lineTo(ox+4, 0);
+          ctx.lineTo(ox-4, 9);
+          ctx.stroke();
+        }
       }
       ctx.restore();
     }
@@ -1163,7 +1177,8 @@
     ctx.fillStyle = blink ? '#ffffff' : COLORS.player;
     // squash & stretch: stretches on attack, squashes slightly while moving
     let sx = 1, sy = 1;
-    if(player.attacking>0){ sx = 1.3; sy = 0.85; }
+    if(player.dashing>0){ sx = 1.6; sy = 0.7; }
+    else if(player.attacking>0){ sx = 1.3; sy = 0.85; }
     else if(moving){ sx = 1 + Math.abs(Math.sin(t*10))*0.06; sy = 1 - Math.abs(Math.sin(t*10))*0.06; }
     ctx.save();
     ctx.scale(sx,sy);

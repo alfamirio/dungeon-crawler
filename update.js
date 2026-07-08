@@ -84,6 +84,7 @@
   function debugSetInfiniteAmmo(v){
     player.hasBow = true;
     player.hasBombBag = true;
+    player.hasDash = true;
     player.infiniteAmmo = v;
     if(v){
       player.bombs = player.maxBombs;
@@ -131,7 +132,30 @@
       mx/=len; my/=len;
       player.dir = {x:mx,y:my};
     }
-    const moveSpeed = player.speed * (player.shielding ? CONFIG.player.shieldSpeedMultiplier : 1);
+
+    // dash: quick burst of speed in the facing direction, with brief
+    // invulnerability -- unlocked as a skill pickup like the bow/bomb bag
+    if(player.dashCd>0) player.dashCd -= dt;
+    if(player.dashing>0) player.dashing -= dt;
+    if(keys['KeyE'] && player.hasDash && player.dashCd<=0 && player.dashing<=0 && !player.shielding){
+      player.dashCd = CONFIG.player.dashCooldown;
+      player.dashing = CONFIG.player.dashDuration;
+      player.dashDir = {x: player.dir.x, y: player.dir.y};
+      player.invuln = Math.max(player.invuln, CONFIG.player.dashDuration);
+      stats.dashesUsed++;
+      SFX.dash();
+      spawnParticles(player.x, player.y, COLORS.dash, 10);
+    }
+    if(player.dashing>0){
+      // locked to the direction the dash started in, ignoring live input,
+      // so releasing keys mid-dash doesn't cut it short
+      mx = player.dashDir.x; my = player.dashDir.y;
+      spawnParticles(player.x, player.y, COLORS.dash, 2);
+    }
+
+    const moveSpeed = player.dashing>0
+      ? CONFIG.player.dashSpeed
+      : player.speed * (player.shielding ? CONFIG.player.shieldSpeedMultiplier : 1);
     const nx = player.x + mx*moveSpeed*dt;
     const ny = player.y + my*moveSpeed*dt;
 
@@ -605,6 +629,10 @@
           player.hasBombBag = true;
           player.bombs = Math.min(player.bombs+CONFIG.items.bombRoomDropAmount, player.maxBombs);
           spawnParticles(sp.x,sp.y,COLORS.bombBag,20);
+          SFX.pickup();
+        } else if(roomInst.skillItem==='dash'){
+          player.hasDash = true;
+          spawnParticles(sp.x,sp.y,COLORS.dash,20);
           SFX.pickup();
         }
       }

@@ -112,6 +112,11 @@
       bombPlace(){
         tone(220, 0.06, {type:'sine', gain:0.14, freqEnd:140});
       },
+      dash(){
+        if(!throttle('dash', 150)) return;
+        noiseBurst(0.12, {gain:0.16, filterFreq:2200, filterType:'highpass'});
+        tone(500, 0.1, {type:'sine', gain:0.12, freqEnd:900});
+      },
       explosion(){
         if(!throttle('explosion', 60)) return;
         noiseBurst(0.32, {gain:0.35, filterFreq:280, filterType:'lowpass'});

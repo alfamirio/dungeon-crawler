@@ -49,6 +49,9 @@
       shieldOffset: 29,        // distance of the shield in front of the player
       shieldWidth: 13,
       shieldHeight: 35,
+      dashSpeed: 780,          // px/sec while dashing (well above normal movement speed)
+      dashDuration: 0.18,      // seconds the dash burst lasts
+      dashCooldown: 0.9,       // seconds before another dash can be triggered
       swordLength: 45,         // length of the sword stick
       swordWidth: 8,
       swordPivotOffset: 11,    // how far the pivot/hilt sits from the player's center
@@ -312,6 +315,7 @@
     bomb: '#111318',
     bombFuse: '#ffb020',
     bombBag: '#c97a2b',
+    dash: '#8fe3ff',
     chestBoxWood: '#6b4a2f',
     chest: '#f4d35e',
     chestBoss: '#e2555a',

@@ -24,12 +24,17 @@
     document.getElementById('arrowCount').textContent = player.infiniteAmmo ? '∞' : (player.arrows + '/' + player.maxArrows);
     document.getElementById('keyWrap').style.display = player.hasKey ? 'flex' : 'none';
     document.getElementById('godWrap').style.display = player.godmode ? 'flex' : 'none';
+    document.getElementById('dashWrap').style.display = player.hasDash ? 'flex' : 'none';
+    const dashReady = player.dashCd<=0;
+    document.getElementById('dashStatus').textContent = dashReady ? 'ready' : '...';
+    document.getElementById('dashWrap').style.opacity = dashReady ? '1' : '0.45';
 
     // ---- sidebar: run stats ----
     document.getElementById('statRooms').textContent = stats.roomsVisited;
     document.getElementById('statKills').textContent = stats.enemiesKilled;
     document.getElementById('statBombs').textContent = stats.bombsPlaced;
     document.getElementById('statArrows').textContent = stats.arrowsFired;
+    document.getElementById('statDashes').textContent = stats.dashesUsed;
     const inst = curInst();
     document.getElementById('statDepth').textContent = inst.meta.dist;
     document.getElementById('statBiome').textContent = biomeFor(inst.meta.dist).name;
