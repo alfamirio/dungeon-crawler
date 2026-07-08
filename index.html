@@ -1,0 +1,1795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dungeon // dungeon crawler</title>
+<style>
+  :root{
+    --bg: #12141c;
+    --panel: #1a1e2a;
+    --wall: #3a4256;
+    --wall-locked: #8a2b2b;
+    --wall-cracked: #55606e;
+    --wall-sealed: #c97a2b;
+    --floor: #20242f;
+    --floor-line: #262b39;
+    --accent: #4fd1c5;
+    --accent2: #f4d35e;
+    --danger: #e2555a;
+    --text: #d9dce3;
+    --muted: #6b7280;
+  }
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; height:100%; background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif; overflow:hidden;
+    -webkit-user-select:none; user-select:none;
+  }
+  #app{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    height:100%; gap:10px; padding:10px;
+  }
+  #title{
+    font-size:13px; letter-spacing:3px; text-transform:uppercase; color:var(--muted);
+  }
+  #stage{
+    position:relative;
+    box-shadow: 0 0 0 2px #000, 0 10px 40px rgba(0,0,0,.6);
+    border-radius:6px; overflow:hidden;
+  }
+  canvas{
+    display:block; background:var(--bg);
+    max-width: 94vw; max-height: 82vh;
+  }
+  #hud{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:10px 14px; pointer-events:none;
+    font-size:14px;
+  }
+  #hearts{ display:flex; gap:6px; }
+  .heart{ width:16px; height:16px; }
+  #resources{ display:flex; gap:16px; align-items:center; margin-top:4px; }
+  .res-item{ display:flex; align-items:center; gap:6px; }
+  #minimap{
+    display:grid; gap:2px; background: rgba(0,0,0,.35); padding:6px; border-radius:4px;
+  }
+  .mm-cell{ width:10px; height:10px; border-radius:2px; background:#232838; }
+  .mm-cell.visited{ background: var(--wall); }
+  .mm-cell.current{ background: var(--accent); }
+  .mm-cell.boss{ background: var(--danger); }
+  .mm-cell.item{ background: var(--accent2); }
+  #msg{
+    position:absolute; left:50%; top:40%; transform:translate(-50%,-50%);
+    text-align:center; font-size:22px; letter-spacing:2px; text-transform:uppercase;
+    color: var(--text); text-shadow: 0 2px 12px rgba(0,0,0,.8); display:none;
+    pointer-events:none;
+  }
+  #msg span{ display:block; font-size:13px; color:var(--muted); margin-top:8px; letter-spacing:1px; }
+  #hint{
+    font-size:12px; color: var(--muted); letter-spacing:1px;
+  }
+  #restart{
+    pointer-events:auto; margin-top:14px; padding:8px 18px; background:var(--accent);
+    border:none; border-radius:4px; color:#0b1410; font-weight:600; letter-spacing:1px;
+    cursor:pointer; display:none; text-transform:uppercase; font-size:12px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="title">Generated dungeon &mdash; initial prototype</div>
+  <div id="stage">
+    <canvas id="game" width="1200" height="900"></canvas>
+    <div id="hud">
+      <div>
+        <div id="hearts"></div>
+        <div id="resources">
+          <div class="res-item">
+            <svg width="16" height="16"><circle cx="8" cy="8" r="7" fill="#111" stroke="var(--accent2)" stroke-width="2"/></svg>
+            <span id="bombCount">0</span>
+          </div>
+          <div class="res-item" id="keyWrap" style="display:none;">
+            <svg width="16" height="16"><circle cx="6" cy="6" r="4" fill="none" stroke="var(--accent2)" stroke-width="2"/><rect x="9" y="5" width="6" height="2.4" fill="var(--accent2)"/></svg>
+            <span>key</span>
+          </div>
+          <div class="res-item" id="godWrap" style="display:none;">
+            <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="#f4d35e" stroke-width="2" stroke-dasharray="3 2"/></svg>
+            <span style="color:#f4d35e; letter-spacing:1px; text-transform:uppercase; font-size:11px;">invincible</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+        <div id="biomeLabel" style="font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--muted);"></div>
+        <div id="minimap"></div>
+      </div>
+    </div>
+    <div id="msg"><div id="msgText"></div><span id="msgSub"></span></div>
+    <button id="restart">Retry</button>
+  </div>
+  <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; Y: debug warp to boss</span></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ======================================================================
+  // GAME CONFIG — every tunable gameplay/visual number lives here.
+  // Change values in this object to rebalance the game; nothing else
+  // in the file needs to be touched for standard tweaks.
+  // ======================================================================
+  const CONFIG = {
+    canvas: {
+      width: 1200,
+      height: 900,
+      wallThickness: 39,      // pixel thickness of room walls
+      doorGap: 165            // width of the passable opening in each wall
+    },
+    dungeon: {
+      roomCount: 13           // approx number of main rooms generated
+    },
+    player: {
+      width: 40,
+      height: 40,
+      speed: 190,              // px/sec movement speed
+      startHp: 6,
+      maxHp: 6,
+      startBombs: 3,
+      maxBombs: 6,
+      invulnDuration: 1.0,     // seconds of invincibility after taking damage
+      attackCooldown: 0.35,    // seconds between attacks
+      attackDuration: 0.15,    // seconds the attack hitbox stays active
+      attackWidth: 48,
+      attackHeight: 48,
+      eyeForwardOffset: 9,     // how far the eye pair sits toward the facing direction
+      eyeSpacing: 9,           // half-distance between the two eyes, perpendicular to facing dir
+      eyeRadius: 7.3,          // white of the eye
+      pupilRadius: 3.5,        // pupil
+      pupilLead: 2.4,          // pupil offset further toward facing dir, inside the eye
+      hurtEyeDuration: 0.35,   // how long the wide-eyed "ouch" reaction lasts after taking damage
+      hurtEyeScale: 1.45,      // eye size multiplier while hurt
+      happyEyeDuration: 0.6,   // how long the happy squinting-eyes reaction lasts after a pickup
+      tailLength: 17,          // how far the tail extends behind the player
+      tailWidth: 6.5,
+      tailTipRadius: 4.3,      // small round poof at the tail's tip
+      tailWagAmplitude: 8,     // sideways sway of the tail tip, in px
+      tailWagSpeedMoving: 9,   // wag speed (rad/sec-ish) while moving
+      tailWagSpeedIdle: 3,     // gentler wag speed while standing still
+      shieldSpeedMultiplier: 0.55, // movement speed while holding shield up
+      shieldBlockDot: 0.3,     // min facing-alignment (dot product) to count as a frontal block
+      shieldOffset: 29,        // distance of the shield in front of the player
+      shieldWidth: 13,
+      shieldHeight: 35,
+      swordLength: 45,         // length of the sword stick
+      swordWidth: 8,
+      swordPivotOffset: 11,    // how far the pivot/hilt sits from the player's center
+      swordSwingStartDeg: 45,  // swing sweeps from +45deg to -45deg relative to facing dir
+      swordSwingEndDeg: -45
+    },
+    combat: {
+      attackDamage: 1,         // melee damage dealt to enemies per hit
+      attackKnockback: 120,
+      bombFuseTime: 1.4,       // seconds until a placed bomb explodes
+      bombRadius: 90,          // explosion radius in pixels
+      bombDamageToEnemies: 3,
+      bombDamageToPlayer: 1,
+      projectileSpeed: 160,
+      projectileRadius: 6,
+      projectileDamage: 1
+    },
+    enemies: {
+      baseCount: 2,             // enemies in a normal room at depth 0
+      maxCount: 6,              // hard cap per normal room
+      countPerDist: 2,          // +1 enemy every N rooms of depth
+      turretChance: 0.35,       // chance a non-boss enemy is a turret instead of a chaser
+      spawnMargin: 80,          // keep-out margin from room walls when spawning
+      bossEscortsMin: 1,        // minion count spawned alongside the boss
+      bossEscortsMax: 2,
+      bossEscortTurretChance: 0.4,
+      chaser: {
+        hp: 2,
+        radius: 18,
+        speedBase: 60,          // px/sec at depth 0
+        speedPerDist: 4,        // extra px/sec per room of depth
+        contactDamage: 1
+      },
+      turret: {
+        hp: 2,
+        radius: 30,
+        shootCooldown: 1.8,
+        contactDamage: 1
+      },
+      boss: {
+        hp: 10,
+        radius: 34,
+        speed: 70,
+        contactDamage: 2
+      }
+    },
+    obstacles: {
+      countMin: 3,
+      countMax: 6,
+      sizeMin: 40,
+      sizeMax: 70,
+      wallMargin: 60,           // keep-out margin from room walls
+      spacing: 18,              // minimum gap enforced between obstacles
+      placementAttempts: 24
+    },
+    decor: {
+      cornerInset: 46,
+      floorCountMin: 4,
+      floorCountMax: 7,
+      treasureFloorCount: 4,    // decor count in item/key/secret rooms
+      treasureClearRadius: 140, // keeps floor decor away from the chest
+      obstacleMargin: 24,
+      placementAttempts: 16,
+      sizeMin: 0.7,
+      sizeMax: 1.3
+    },
+    rooms: {
+      entryMargin: 50,          // distance from the entry wall the player lands at
+      chestPickupRadius: 30,
+      crackedWallProximity: 60  // how close a bomb must be to a cracked wall to break it
+    },
+    items: {
+      maxBombsCap: 8,
+      bombRefillAmount: 2,
+      maxBombsIncrement: 1,
+      secretHealAmount: 2
+    },
+    effects: {
+      hitShake: 8, hitStop: 0.06,           // player takes damage
+      bombShake: 10, bombHitStop: 0.07,     // bomb explodes
+      attackHitStop: 0.05                   // melee connects
+    }
+  };
+
+  const CANVAS_W = CONFIG.canvas.width, CANVAS_H = CONFIG.canvas.height;
+  const WALL = CONFIG.canvas.wallThickness;
+  const ROOM_W = CANVAS_W - WALL*2;
+  const ROOM_H = CANVAS_H - WALL*2;
+  const DOOR_GAP = CONFIG.canvas.doorGap;
+  const GRID_ROOMS = CONFIG.dungeon.roomCount;
+
+  const COLORS = {
+    floor: '#20242f',
+    floorLine: '#262b39',
+    wall: '#3a4256',
+    wallLocked: '#8a2b2b',
+    wallCracked: '#55606e',
+    wallSealed: '#c97a2b',
+    player: '#4fd1c5',
+    playerTail: '#3aa89e',
+    playerNose: '#eafffb',
+    sword: '#eef2f7',
+    swordEdge: '#aab4c4',
+    eyeWhite: '#ffffff',
+    eyePupil: '#12141c',
+    chaser: '#e2555a',
+    turret: '#caa23a',
+    projectile: '#ffdd57',
+    bomb: '#111318',
+    bombFuse: '#ffb020',
+    chest: '#f4d35e',
+    chestBoss: '#e2555a',
+    obstacle: '#2a2f3d',
+    obstacleEdge: '#3a4256',
+    explosion: 'rgba(255,176,32,0.55)'
+  };
+
+  // Biomes by depth: each stretch of rooms changes the palette (stone/roots/ice/lava)
+  const BIOMES = [
+    { key:'stone', name:'Stone', floor:'#20242f', floorLine:'#262b39', wall:'#3a4256', fog:'rgba(79,209,197,0.05)',  glow:'#4fd1c5', particle:'#4fd1c5', obstacle:'#2a2f3d', obstacleEdge:'#3a4256' },
+    { key:'roots', name:'Roots', floor:'#1c2620', floorLine:'#243228', wall:'#33513f', fog:'rgba(122,209,79,0.06)', glow:'#7ad14f', particle:'#7ad14f', obstacle:'#243a2c', obstacleEdge:'#33513f' },
+    { key:'ice',    name:'Ice',  floor:'#161f2c', floorLine:'#20304a', wall:'#33506e', fog:'rgba(79,170,209,0.07)', glow:'#7fd4ff', particle:'#bfe9ff', obstacle:'#1c2c40', obstacleEdge:'#33506e' },
+    { key:'lava',   name:'Lava',   floor:'#241816', floorLine:'#32201c', wall:'#5a2e28', fog:'rgba(226,110,60,0.08)', glow:'#ff8a4d', particle:'#ff8a4d', obstacle:'#361f19', obstacleEdge:'#5a2e28' }
+  ];
+  function biomeFor(distVal){
+    const maxD = (typeof dungeon !== 'undefined' && dungeon && dungeon.maxDist) ? dungeon.maxDist : 8;
+    const step = Math.max(1, (maxD+1) / BIOMES.length);
+    return BIOMES[Math.min(BIOMES.length-1, Math.floor(distVal / step))];
+  }
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // Render at native device-pixel resolution so shapes stay crisp whether the
+  // display is high-DPI and/or the CSS max-width/max-height rules shrink the
+  // element to fit the viewport. All game code below keeps using CANVAS_W/
+  // CANVAS_H as its coordinate space; this scale factor is applied once and
+  // is transparent to the rest of the drawing code.
+  const DPR = Math.max(1, window.devicePixelRatio || 1);
+  canvas.width = CANVAS_W * DPR;
+  canvas.height = CANVAS_H * DPR;
+  canvas.style.width = CANVAS_W + 'px';
+  canvas.style.height = CANVAS_H + 'px';
+  ctx.scale(DPR, DPR);
+
+  // ---------- Utils ----------
+  function rectsOverlap(a,b){
+    return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
+  }
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+  function dist(x1,y1,x2,y2){ return Math.hypot(x2-x1, y2-y1); }
+  function randInt(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
+  function choice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+  const DIRS = [
+    {dx:0, dy:-1, name:'N', opp:'S'},
+    {dx:0, dy:1,  name:'S', opp:'N'},
+    {dx:1, dy:0,  name:'E', opp:'W'},
+    {dx:-1,dy:0,  name:'W', opp:'E'}
+  ];
+
+  function roomKey(x,y){ return x+','+y; }
+  function doorKey(x1,y1,x2,y2){
+    if(x1>x2 || (x1===x2 && y1>y2)){
+      const t1=x1,t2=y1; x1=x2; y1=y2; x2=t1; y2=t2;
+    }
+    return x1+','+y1+'|'+x2+','+y2;
+  }
+
+  // ---------- Dungeon generation ----------
+  function generateDungeon(){
+    const rooms = new Map();      // key -> room meta {x,y,type,dist}
+    const doors = new Map();      // doorKey -> {state, coords:[a,b]}
+    const start = {x:0,y:0};
+    rooms.set(roomKey(0,0), {x:0,y:0,type:'start',dist:0});
+
+    const frontier = [{x:0,y:0}];
+    let created = 1;
+    // random-walk growth with backtracking to build a connected graph
+    const order = [{x:0,y:0}];
+    while(created < GRID_ROOMS && frontier.length){
+      const from = frontier[randInt(0, frontier.length-1)];
+      const dirsShuffled = [...DIRS].sort(()=>Math.random()-0.5);
+      let placed = false;
+      for(const d of dirsShuffled){
+        const nx = from.x+d.dx, ny = from.y+d.dy;
+        const k = roomKey(nx,ny);
+        if(rooms.has(k)) continue;
+        if(Math.random() < 0.55) continue; // add some randomness/sparsity
+        rooms.set(k, {x:nx,y:ny,type:'normal',dist: (rooms.get(roomKey(from.x,from.y)).dist)+1});
+        doors.set(doorKey(from.x,from.y,nx,ny), {state:'open'});
+        frontier.push({x:nx,y:ny});
+        order.push({x:nx,y:ny});
+        created++;
+        placed = true;
+        break;
+      }
+      if(!placed){
+        // remove exhausted node from frontier to avoid infinite loop
+        const idx = frontier.indexOf(from);
+        if(idx>=0) frontier.splice(idx,1);
+      }
+    }
+
+    // ensure at least a small dungeon even if unlucky
+    if(rooms.size < 4){
+      // force line extension east
+      let last = {x:0,y:0};
+      for(let i=1;i<5;i++){
+        const nx = last.x+1, ny = last.y;
+        const k = roomKey(nx,ny);
+        if(!rooms.has(k)){
+          rooms.set(k, {x:nx,y:ny,type:'normal',dist:i});
+          doors.set(doorKey(last.x,last.y,nx,ny), {state:'open'});
+        }
+        last = {x:nx,y:ny};
+      }
+    }
+
+    // find dead-ends (rooms with exactly 1 connection), excluding start
+    function neighborsOf(x,y){
+      const res = [];
+      for(const d of DIRS){
+        const nx=x+d.dx, ny=y+d.dy;
+        if(rooms.has(roomKey(nx,ny)) && doors.has(doorKey(x,y,nx,ny))) res.push({x:nx,y:ny,dir:d});
+      }
+      return res;
+    }
+
+    const deadEnds = [];
+    for(const [k,r] of rooms){
+      if(r.type==='start') continue;
+      if(neighborsOf(r.x,r.y).length===1) deadEnds.push(r);
+    }
+    deadEnds.sort((a,b)=>b.dist-a.dist);
+
+    // boss room = farthest dead end (or farthest room if no dead end)
+    let bossRoom = deadEnds[0];
+    if(!bossRoom){
+      let farthest = null;
+      for(const [,r] of rooms){ if(r.type==='start') continue; if(!farthest || r.dist>farthest.dist) farthest = r; }
+      bossRoom = farthest;
+    }
+    bossRoom.type = 'boss';
+
+    // item room = another dead end, not boss
+    let itemRoom = deadEnds.find(r => r!==bossRoom);
+    if(!itemRoom){
+      // pick any normal room that's not boss/start
+      for(const [,r] of rooms){ if(r.type==='normal'){ itemRoom = r; break; } }
+    }
+    if(itemRoom) itemRoom.type = 'item';
+
+    // key room = a normal room roughly along the path to boss, not start/boss/item
+    const candidates = [...rooms.values()].filter(r => r.type==='normal' && r.dist>=1);
+    let keyRoom = candidates.length ? choice(candidates) : null;
+    if(keyRoom) keyRoom.type = 'key';
+
+    // lock the door leading into the boss room
+    const bossNeighbors = neighborsOf(bossRoom.x,bossRoom.y);
+    if(bossNeighbors.length){
+      const bn = bossNeighbors[0];
+      const dk = doorKey(bossRoom.x,bossRoom.y,bn.x,bn.y);
+      doors.get(dk).state = 'locked';
+    }
+
+    // secret room: attach one extra room off a random existing room via a cracked wall
+    const allRoomsArr = [...rooms.values()];
+    let secretRoom = null;
+    for(let attempt=0; attempt<20 && !secretRoom; attempt++){
+      const base = choice(allRoomsArr);
+      const dirsShuffled = [...DIRS].sort(()=>Math.random()-0.5);
+      for(const d of dirsShuffled){
+        const nx = base.x+d.dx, ny = base.y+d.dy;
+        const k = roomKey(nx,ny);
+        if(rooms.has(k)) continue;
+        secretRoom = {x:nx,y:ny,type:'secret',dist:base.dist+1};
+        rooms.set(k, secretRoom);
+        doors.set(doorKey(base.x,base.y,nx,ny), {state:'cracked'});
+        break;
+      }
+    }
+
+    let maxDist = 0;
+    for(const [,r] of rooms){ if(r.dist>maxDist) maxDist = r.dist; }
+
+    return { rooms, doors, startCoord:{x:0,y:0}, bossRoom, itemRoom, keyRoom, secretRoom, maxDist };
+  }
+
+  // ---------- Room instance (runtime state) ----------
+  function makeObstacles(type, biomeKey){
+    const obs = [];
+    if(type==='start' || type==='item' || type==='secret') return obs;
+    const oc = CONFIG.obstacles;
+    const n = randInt(oc.countMin, oc.countMax);
+    for(let i=0;i<n;i++){
+      const w = randInt(oc.sizeMin,oc.sizeMax), h = randInt(oc.sizeMin,oc.sizeMax);
+      let placed = false;
+      for(let attempt=0; attempt<oc.placementAttempts && !placed; attempt++){
+        const x = randInt(oc.wallMargin, ROOM_W-oc.wallMargin-w);
+        const y = randInt(oc.wallMargin, ROOM_H-oc.wallMargin-h);
+        const rect = {x,y,w,h};
+        let overlaps = false;
+        for(const o of obs){
+          if(rectsOverlap(rect, {x:o.x-oc.spacing, y:o.y-oc.spacing, w:o.w+oc.spacing*2, h:o.h+oc.spacing*2})){ overlaps = true; break; }
+        }
+        if(!overlaps){
+          obs.push({ x, y, w, h, biome: biomeKey, seed: Math.random()*1000 });
+          placed = true;
+        }
+      }
+    }
+    return obs;
+  }
+
+  function makeEnemies(type, dist){
+    const enemies = [];
+    if(type==='start' || type==='item' || type==='secret') return enemies;
+    const ec = CONFIG.enemies;
+    const isBossRoom = type==='boss';
+    const count = isBossRoom ? 1 : Math.min(ec.baseCount + Math.floor(dist/ec.countPerDist), ec.maxCount);
+    for(let i=0;i<count;i++){
+      const isBoss = isBossRoom;
+      const isTurret = !isBoss && Math.random() < ec.turretChance;
+      const x = randInt(ec.spawnMargin, ROOM_W-ec.spawnMargin);
+      const y = randInt(ec.spawnMargin, ROOM_H-ec.spawnMargin);
+      const stats = isBoss ? ec.boss : (isTurret ? ec.turret : ec.chaser);
+      enemies.push({
+        type: isBoss ? 'boss' : (isTurret ? 'turret' : 'chaser'),
+        x, y,
+        hp: stats.hp,
+        maxHp: stats.hp,
+        r: stats.radius,
+        speed: isBoss ? ec.boss.speed : (isTurret ? 0 : ec.chaser.speedBase + dist*ec.chaser.speedPerDist),
+        shootCd: 0,
+        hitFlash: 0
+      });
+    }
+    // boss fights get escort minions now that arenas are bigger
+    if(isBossRoom){
+      const escorts = randInt(ec.bossEscortsMin, ec.bossEscortsMax);
+      for(let i=0;i<escorts;i++){
+        const isTurret = Math.random() < ec.bossEscortTurretChance;
+        const x = randInt(ec.spawnMargin, ROOM_W-ec.spawnMargin);
+        const y = randInt(ec.spawnMargin, ROOM_H-ec.spawnMargin);
+        const stats = isTurret ? ec.turret : ec.chaser;
+        enemies.push({
+          type: isTurret ? 'turret' : 'chaser',
+          x, y,
+          hp: stats.hp, maxHp: stats.hp,
+          r: stats.radius,
+          speed: isTurret ? 0 : ec.chaser.speedBase + dist*ec.chaser.speedPerDist,
+          shootCd: 0,
+          hitFlash: 0
+        });
+      }
+    }
+    return enemies;
+  }
+
+  // decorative, non-colliding scenery: corner fixtures + scattered floor details
+  function makeDecor(type, biomeKey, obstacles){
+    const dc = CONFIG.decor;
+    const decor = [];
+    // corner fixtures (torches / vines / icicles / embers depending on biome)
+    const inset = dc.cornerInset;
+    const corners = [
+      {x: inset, y: inset}, {x: ROOM_W-inset, y: inset},
+      {x: inset, y: ROOM_H-inset}, {x: ROOM_W-inset, y: ROOM_H-inset}
+    ];
+    for(const c of corners){
+      decor.push({ kind:'corner', biome: biomeKey, x:c.x, y:c.y, seed: Math.random()*1000 });
+    }
+
+    // scattered floor decor, avoiding obstacles and (for treasure rooms) the center chest
+    const isTreasureRoom = (type==='item' || type==='key' || type==='secret');
+    const count = isTreasureRoom ? dc.treasureFloorCount : randInt(dc.floorCountMin, dc.floorCountMax);
+    for(let i=0;i<count;i++){
+      let x, y, ok = false;
+      for(let attempt=0; attempt<dc.placementAttempts && !ok; attempt++){
+        x = randInt(70, ROOM_W-70);
+        y = randInt(70, ROOM_H-70);
+        ok = true;
+        if(isTreasureRoom && dist(x,y,ROOM_W/2,ROOM_H/2) < dc.treasureClearRadius) ok = false;
+        for(const o of obstacles){
+          if(x>o.x-dc.obstacleMargin && x<o.x+o.w+dc.obstacleMargin && y>o.y-dc.obstacleMargin && y<o.y+o.h+dc.obstacleMargin){ ok = false; break; }
+        }
+      }
+      if(ok){
+        decor.push({ kind:'floor', biome: biomeKey, x, y, size: dc.sizeMin+Math.random()*(dc.sizeMax-dc.sizeMin), seed: Math.random()*1000 });
+      }
+    }
+    return decor;
+  }
+
+  function buildRoomInstance(meta){
+    const obstacles = makeObstacles(meta.type, biomeFor(meta.dist).key);
+    return {
+      meta,
+      obstacles,
+      decor: makeDecor(meta.type, biomeFor(meta.dist).key, obstacles),
+      enemies: makeEnemies(meta.type, meta.dist),
+      cleared: (meta.type==='start' || meta.type==='item' || meta.type==='secret'),
+      visited: false,
+      chestTaken: false
+    };
+  }
+
+  // ---------- Game state ----------
+  let dungeon, roomInstances, current, player, bombs, projectiles, particles;
+  let keys = {};
+  let gameOver = false, gameWon = false;
+  let shake = 0;
+  let hitStop = 0;
+  let flash = 0, flashColor = '255,255,255';
+
+  function newGame(){
+    dungeon = generateDungeon();
+    roomInstances = new Map();
+    for(const [k, meta] of dungeon.rooms){
+      roomInstances.set(k, buildRoomInstance(meta));
+    }
+    current = {x:0,y:0};
+    roomInstances.get(roomKey(0,0)).visited = true;
+
+    player = {
+      x: ROOM_W/2, y: ROOM_H/2,
+      w: CONFIG.player.width, h: CONFIG.player.height,
+      speed: CONFIG.player.speed,
+      dir: {x:0, y:1},
+      hp: CONFIG.player.startHp, maxHp: CONFIG.player.maxHp,
+      bombs: CONFIG.player.startBombs, maxBombs: CONFIG.player.maxBombs,
+      hasKey: false,
+      invuln: 0,
+      attackCd: 0,
+      attacking: 0,
+      godmode: false,
+      hasShield: true,   // shield is available from the start, alongside the sword
+      shielding: false,
+      hurtTimer: 0,      // brief wide-eyed reaction after taking damage
+      happyTimer: 0      // brief happy-eyed reaction after a pickup
+    };
+    bombs = [];
+    projectiles = [];
+    particles = [];
+    gameOver = false;
+    gameWon = false;
+    shake = 0;
+    document.getElementById('msg').style.display = 'none';
+    document.getElementById('restart').style.display = 'none';
+    seedAmbient(biomeFor(0));
+    buildMinimap();
+  }
+
+  function curInst(){ return roomInstances.get(roomKey(current.x, current.y)); }
+
+  function getDoorState(x1,y1,x2,y2){
+    const dk = doorKey(x1,y1,x2,y2);
+    const d = dungeon.doors.get(dk);
+    return d ? d.state : null;
+  }
+
+  function isDoorPassable(x1,y1,x2,y2){
+    const inst = curInst();
+    if(!inst.cleared) return false; // sealed during combat
+    const st = getDoorState(x1,y1,x2,y2);
+    return st === 'open';
+  }
+
+  // ---------- Input ----------
+  window.addEventListener('keydown', e=>{
+    keys[e.code] = true;
+    if(e.code==='Space') e.preventDefault();
+  });
+  window.addEventListener('keyup', e=>{ keys[e.code] = false; });
+
+  document.getElementById('restart').addEventListener('click', newGame);
+
+  // ---------- Combat ----------
+  function playerAttackHitbox(){
+    const w = CONFIG.player.attackWidth, h = CONFIG.player.attackHeight;
+    let x = player.x, y = player.y;
+    if(player.dir.x>0) x += player.w/2;
+    else if(player.dir.x<0) x -= player.w/2 + w;
+    else x -= w/2;
+    if(player.dir.y>0) y += player.h/2;
+    else if(player.dir.y<0) y -= player.h/2 + h;
+    else if(player.dir.x!==0) y -= h/2;
+    return {x, y, w, h};
+  }
+
+  function spawnParticles(x,y,color,n){
+    for(let i=0;i<n;i++){
+      const a = Math.random()*Math.PI*2;
+      const sp = 40+Math.random()*140;
+      const life = 0.35+Math.random()*0.4;
+      particles.push({
+        x,y,vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+        life, maxLife: life, color,
+        size: 3+Math.random()*3,
+        rot: Math.random()*Math.PI*2,
+        rotSpeed: (Math.random()-0.5)*8,
+        shape: Math.random()<0.5 ? 'rect' : 'tri'
+      });
+    }
+  }
+
+  // Returns true if the player is holding the shield up AND the hit is
+  // coming from roughly the direction the player is facing.
+  function isShieldBlocking(sx, sy){
+    if(!player.shielding) return false;
+    const dx = sx-player.x, dy = sy-player.y;
+    const d = Math.hypot(dx,dy);
+    if(d<=0) return false;
+    const dot = (dx/d)*player.dir.x + (dy/d)*player.dir.y;
+    return dot >= CONFIG.player.shieldBlockDot;
+  }
+
+  function spawnBlockSpark(x,y){
+    // NOTE: intentionally no hitStop here. A blocked hit against a shield
+    // can recur every single frame while an enemy is pressed up against it,
+    // and hitStop pausing update() each time produces a visible stutter/
+    // slowdown for as long as contact continues. Hit-stop is reserved for
+    // one-off impacts (sword connects, player takes damage, bomb explodes).
+    spawnParticles(x, y, '#dfe8ff', 4);
+  }
+
+  function damagePlayer(amount){
+    if(player.godmode) return;
+    if(player.invuln>0) return;
+    player.hp = Math.max(0, player.hp-amount);
+    player.invuln = CONFIG.player.invulnDuration;
+    player.hurtTimer = CONFIG.player.hurtEyeDuration;
+    shake = CONFIG.effects.hitShake;
+    hitStop = CONFIG.effects.hitStop;
+    flash = 1; flashColor = '226,85,90';
+    if(player.hp<=0){ gameOver = true; showMessage('You have fallen', 'press retry'); }
+  }
+
+  function tryOpenLockedDoor(nx, ny){
+    if(player.hasKey){
+      const dk = doorKey(current.x,current.y,nx,ny);
+      const d = dungeon.doors.get(dk);
+      if(d && d.state==='locked'){
+        d.state = 'open';
+        player.hasKey = false;
+        spawnParticles(player.x, player.y, COLORS.chest, 20);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function tryBreakCrackedNear(bx,by){
+    for(const d of DIRS){
+      const nx = current.x+d.dx, ny = current.y+d.dy;
+      const dk = doorKey(current.x,current.y,nx,ny);
+      const door = dungeon.doors.get(dk);
+      if(door && door.state==='cracked'){
+        // check bomb is near that wall side
+        let near = false;
+        if(d.name==='N' && by < CONFIG.rooms.crackedWallProximity) near = true;
+        if(d.name==='S' && by > ROOM_H-CONFIG.rooms.crackedWallProximity) near = true;
+        if(d.name==='E' && bx > ROOM_W-CONFIG.rooms.crackedWallProximity) near = true;
+        if(d.name==='W' && bx < CONFIG.rooms.crackedWallProximity) near = true;
+        if(near){
+          door.state = 'open';
+          spawnParticles(bx,by, COLORS.wallCracked, 24);
+        }
+      }
+    }
+  }
+
+  // ---------- Update ----------
+  function moveToRoom(nx, ny, entrySide){
+    current = {x:nx, y:ny};
+    const inst = curInst();
+    inst.visited = true;
+    // Bombs and projectiles are tracked in room-local coordinates and only
+    // ever make sense in the room they were spawned in. Without clearing
+    // them here, a still-armed bomb or an in-flight arrow/projectile from
+    // the previous room would carry its old x/y straight into the new
+    // room's coordinate space and appear to spawn out of nowhere.
+    bombs = [];
+    projectiles = [];
+    // place player on opposite side of the entry
+    const margin = CONFIG.rooms.entryMargin;
+    if(entrySide==='N'){ player.x = ROOM_W/2; player.y = ROOM_H - margin; }
+    else if(entrySide==='S'){ player.x = ROOM_W/2; player.y = margin; }
+    else if(entrySide==='E'){ player.x = margin; player.y = ROOM_H/2; }
+    else if(entrySide==='W'){ player.x = ROOM_W - margin; player.y = ROOM_H/2; }
+    seedAmbient(biomeFor(inst.meta.dist));
+    buildMinimap();
+  }
+
+  // DEBUG: warp straight to the boss room, dropping the player at its center
+  function warpToBossRoom(){
+    const bossMeta = [...dungeon.rooms.values()].find(m => m.type==='boss');
+    if(!bossMeta) return;
+    current = {x: bossMeta.x, y: bossMeta.y};
+    const inst = curInst();
+    inst.visited = true;
+    bombs = [];
+    projectiles = [];
+    player.x = ROOM_W/2;
+    player.y = ROOM_H/2;
+    seedAmbient(biomeFor(inst.meta.dist));
+    buildMinimap();
+  }
+
+  function update(dt){
+    if(flash>0) flash = Math.max(0, flash-dt*4);
+    if(gameOver || gameWon) return;
+    if(hitStop>0){ hitStop -= dt; return; }
+
+    // shield: held up while Shift is down, slows movement, and blocks
+    // frontal contact/projectile damage (see isShieldBlocking below)
+    player.shielding = player.hasShield && (keys['ShiftLeft']||keys['ShiftRight']);
+
+    // player movement
+    let mx=0, my=0;
+    if(keys['ArrowLeft']||keys['KeyA']) mx -= 1;
+    if(keys['ArrowRight']||keys['KeyD']) mx += 1;
+    if(keys['ArrowUp']||keys['KeyW']) my -= 1;
+    if(keys['ArrowDown']||keys['KeyS']) my += 1;
+    if(mx!==0||my!==0){
+      const len = Math.hypot(mx,my);
+      mx/=len; my/=len;
+      player.dir = {x:mx,y:my};
+    }
+    const moveSpeed = player.speed * (player.shielding ? CONFIG.player.shieldSpeedMultiplier : 1);
+    const nx = player.x + mx*moveSpeed*dt;
+    const ny = player.y + my*moveSpeed*dt;
+
+    // obstacle collision (simple AABB resolve, axis separated)
+    const inst = curInst();
+    let px = nx, py = player.y;
+    const pRectX = {x:px-player.w/2, y:py-player.h/2, w:player.w, h:player.h};
+    for(const o of inst.obstacles){ if(rectsOverlap(pRectX,o)){ px = player.x; break; } }
+    let py2 = ny;
+    const pRectY = {x:px-player.w/2, y:py2-player.h/2, w:player.w, h:player.h};
+    for(const o of inst.obstacles){ if(rectsOverlap(pRectY,o)){ py2 = player.y; break; } }
+    player.x = px; player.y = py2;
+
+    // room bounds / door transitions
+    const gapMin = (ROOM_H-DOOR_GAP)/2, gapMax = (ROOM_H+DOOR_GAP)/2;
+    const gapMinX = (ROOM_W-DOOR_GAP)/2, gapMaxX = (ROOM_W+DOOR_GAP)/2;
+
+    if(player.x < 0){
+      const passable = isDoorPassable(current.x,current.y,current.x-1,current.y) && player.y>gapMin && player.y<gapMax;
+      if(passable) moveToRoom(current.x-1, current.y, 'W');
+      else { tryOpenLockedDoor(current.x-1,current.y); player.x = 0; }
+    }
+    if(player.x > ROOM_W){
+      const passable = isDoorPassable(current.x,current.y,current.x+1,current.y) && player.y>gapMin && player.y<gapMax;
+      if(passable) moveToRoom(current.x+1, current.y, 'E');
+      else { tryOpenLockedDoor(current.x+1,current.y); player.x = ROOM_W; }
+    }
+    if(player.y < 0){
+      const passable = isDoorPassable(current.x,current.y,current.x,current.y-1) && player.x>gapMinX && player.x<gapMaxX;
+      if(passable) moveToRoom(current.x, current.y-1, 'N');
+      else { tryOpenLockedDoor(current.x,current.y-1); player.y = 0; }
+    }
+    if(player.y > ROOM_H){
+      const passable = isDoorPassable(current.x,current.y,current.x,current.y+1) && player.x>gapMinX && player.x<gapMaxX;
+      if(passable) moveToRoom(current.x, current.y+1, 'S');
+      else { tryOpenLockedDoor(current.x,current.y+1); player.y = ROOM_H; }
+    }
+
+    // attack
+    if(player.attackCd>0) player.attackCd -= dt;
+    if(player.attacking>0) player.attacking -= dt;
+    if(keys['Space'] && player.attackCd<=0 && !player.shielding){
+      player.attackCd = CONFIG.player.attackCooldown;
+      player.attacking = CONFIG.player.attackDuration;
+      const hb = playerAttackHitbox();
+      for(const en of curInst().enemies){
+        const enRect = {x:en.x-en.r, y:en.y-en.r, w:en.r*2, h:en.r*2};
+        if(rectsOverlap(hb, enRect)){
+          en.hp -= CONFIG.combat.attackDamage;
+          en.hitFlash = 0.15;
+          const kb = CONFIG.combat.attackKnockback;
+          en.x += player.dir.x*kb*dt*6;
+          en.y += player.dir.y*kb*dt*6;
+          spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:COLORS.chaser, 8);
+          hitStop = Math.max(hitStop, CONFIG.effects.attackHitStop);
+        }
+      }
+    }
+
+    // bomb placement
+    if(keys['KeyB'] && player.bombs>0 && !player._bombLock){
+      player.bombs--;
+      bombs.push({x:player.x, y:player.y, fuse:CONFIG.combat.bombFuseTime});
+      player._bombLock = true;
+    }
+    if(!keys['KeyB']) player._bombLock = false;
+
+    // DEBUG: K key kills all enemies in the current room
+    if(keys['KeyK'] && !player._debugKillLock){
+      player._debugKillLock = true;
+      const inst = curInst();
+      for(const en of inst.enemies){
+        spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:'#ffffff', 14);
+      }
+      inst.enemies.length = 0;
+    }
+    if(!keys['KeyK']) player._debugKillLock = false;
+
+    // DEBUG: I key toggles invincibility
+    if(keys['KeyI'] && !player._debugGodLock){
+      player._debugGodLock = true;
+      player.godmode = !player.godmode;
+    }
+    if(!keys['KeyI']) player._debugGodLock = false;
+
+    // DEBUG: Y key warps directly to the boss room
+    if(keys['KeyY'] && !player._debugWarpLock){
+      player._debugWarpLock = true;
+      warpToBossRoom();
+    }
+    if(!keys['KeyY']) player._debugWarpLock = false;
+
+    // invuln timer
+    if(player.invuln>0) player.invuln -= dt;
+    if(player.hurtTimer>0) player.hurtTimer -= dt;
+    if(player.happyTimer>0) player.happyTimer -= dt;
+
+    // bombs update
+    for(let i=bombs.length-1;i>=0;i--){
+      const b = bombs[i];
+      b.fuse -= dt;
+      if(b.fuse<=0){
+        spawnParticles(b.x,b.y, COLORS.bombFuse, 30);
+        shake = CONFIG.effects.bombShake;
+        hitStop = CONFIG.effects.bombHitStop;
+        flash = 0.8; flashColor = '255,176,32';
+        const radius = CONFIG.combat.bombRadius;
+        for(const en of curInst().enemies){
+          if(dist(en.x,en.y,b.x,b.y) < radius+en.r){
+            en.hp -= CONFIG.combat.bombDamageToEnemies;
+            en.hitFlash = 0.2;
+          }
+        }
+        if(dist(player.x,player.y,b.x,b.y) < radius+player.w/2){
+          damagePlayer(CONFIG.combat.bombDamageToPlayer);
+        }
+        tryBreakCrackedNear(b.x,b.y);
+        bombs.splice(i,1);
+      }
+    }
+
+    // enemies update
+    const roomInst = curInst();
+    for(let i=roomInst.enemies.length-1;i>=0;i--){
+      const en = roomInst.enemies[i];
+      if(en.hitFlash>0) en.hitFlash -= dt;
+      if(en._blockCd>0) en._blockCd -= dt;
+      if(en.hp<=0){
+        spawnParticles(en.x,en.y, en.type==='boss'?COLORS.chest:'#ffffff', 16);
+        roomInst.enemies.splice(i,1);
+        continue;
+      }
+      if(en.type==='chaser' || en.type==='boss'){
+        const d = dist(en.x,en.y,player.x,player.y);
+        if(d>1){
+          const vx = (player.x-en.x)/d, vy=(player.y-en.y)/d;
+          en.x += vx*en.speed*dt;
+          en.y += vy*en.speed*dt;
+        }
+      } else if(en.type==='turret'){
+        en.shootCd -= dt;
+        if(en.shootCd<=0){
+          en.shootCd = CONFIG.enemies.turret.shootCooldown;
+          const d = dist(en.x,en.y,player.x,player.y);
+          const vx=(player.x-en.x)/d, vy=(player.y-en.y)/d;
+          const ps = CONFIG.combat.projectileSpeed;
+          projectiles.push({x:en.x,y:en.y,vx:vx*ps,vy:vy*ps,r:CONFIG.combat.projectileRadius});
+        }
+      }
+      en.x = clamp(en.x, en.r, ROOM_W-en.r);
+      en.y = clamp(en.y, en.r, ROOM_H-en.r);
+
+      if(dist(en.x,en.y,player.x,player.y) < en.r + player.w/2){
+        if(isShieldBlocking(en.x,en.y)){
+          if(!(en._blockCd>0)){
+            spawnBlockSpark(en.x,en.y);
+            en._blockCd = 0.12;
+          }
+          const dx = en.x-player.x, dy = en.y-player.y, dd = Math.hypot(dx,dy)||1;
+          en.x += (dx/dd)*140*dt;
+          en.y += (dy/dd)*140*dt;
+        } else {
+          const contactDamage = en.type==='boss' ? CONFIG.enemies.boss.contactDamage
+            : en.type==='turret' ? CONFIG.enemies.turret.contactDamage
+            : CONFIG.enemies.chaser.contactDamage;
+          damagePlayer(contactDamage);
+        }
+      }
+    }
+
+    if(!roomInst.cleared && roomInst.enemies.length===0){
+      roomInst.cleared = true;
+      if(roomInst.meta.type==='boss'){
+        gameWon = true;
+        showMessage('Dungeon complete!', 'press retry for another seed');
+      }
+    }
+
+    // projectiles
+    for(let i=projectiles.length-1;i>=0;i--){
+      const p = projectiles[i];
+      p.x += p.vx*dt; p.y += p.vy*dt;
+      if(p.x<0||p.x>ROOM_W||p.y<0||p.y>ROOM_H){ projectiles.splice(i,1); continue; }
+      if(dist(p.x,p.y,player.x,player.y) < p.r+player.w/2){
+        if(isShieldBlocking(p.x,p.y)){
+          spawnBlockSpark(p.x,p.y);
+        } else {
+          damagePlayer(CONFIG.combat.projectileDamage);
+        }
+        projectiles.splice(i,1);
+      }
+    }
+
+    // particles
+    for(let i=particles.length-1;i>=0;i--){
+      const pt = particles[i];
+      pt.life -= dt;
+      pt.x += pt.vx*dt; pt.y += pt.vy*dt;
+      pt.vy += 160*dt; // slight gravity
+      pt.vx *= 0.92; pt.vy *= 0.96;
+      pt.rot += pt.rotSpeed*dt;
+      if(pt.life<=0) particles.splice(i,1);
+    }
+
+    updateAmbient(dt, biomeFor(roomInst.meta.dist));
+
+    // chest pickup (item/key/secret rooms)
+    const meta = roomInst.meta;
+    if((meta.type==='item' || meta.type==='key' || meta.type==='secret') && !roomInst.chestTaken){
+      const cx = ROOM_W/2, cy = ROOM_H/2;
+      if(dist(player.x,player.y,cx,cy) < CONFIG.rooms.chestPickupRadius){
+        roomInst.chestTaken = true;
+        player.happyTimer = CONFIG.player.happyEyeDuration;
+        if(meta.type==='key'){
+          player.hasKey = true;
+        } else if(meta.type==='item'){
+          player.maxBombs = Math.min(player.maxBombs+CONFIG.items.maxBombsIncrement, CONFIG.items.maxBombsCap);
+          player.bombs = Math.min(player.bombs+CONFIG.items.bombRefillAmount, player.maxBombs);
+        } else if(meta.type==='secret'){
+          player.hp = Math.min(player.hp+CONFIG.items.secretHealAmount, player.maxHp);
+        }
+        spawnParticles(cx,cy,COLORS.chest,24);
+      }
+    }
+
+    if(shake>0) shake = Math.max(0, shake-dt*40);
+
+    updateHud();
+  }
+
+  // ---------- Drawing ----------
+  function drawWallSide(dirName, state, biome){
+    ctx.save();
+    let color = biome ? biome.wall : COLORS.wall;
+    if(state==='locked') color = COLORS.wallLocked;
+    else if(state==='cracked') color = COLORS.wallCracked;
+    else if(state==='sealed') color = COLORS.wallSealed;
+
+    const hasGap = state==='open';
+    ctx.fillStyle = color;
+
+    if(dirName==='N' || dirName==='S'){
+      const yTop = dirName==='N' ? -WALL : ROOM_H;
+      if(hasGap){
+        ctx.fillRect(-WALL, yTop, (ROOM_W-DOOR_GAP)/2+WALL, WALL);
+        ctx.fillRect((ROOM_W+DOOR_GAP)/2, yTop, (ROOM_W-DOOR_GAP)/2+WALL, WALL);
+      } else {
+        ctx.fillRect(-WALL, yTop, ROOM_W+WALL*2, WALL);
+      }
+    } else {
+      const x = dirName==='W' ? -WALL : ROOM_W;
+      if(hasGap){
+        ctx.fillRect(x, -WALL, WALL, (ROOM_H-DOOR_GAP)/2+WALL);
+        ctx.fillRect(x, (ROOM_H+DOOR_GAP)/2, WALL, (ROOM_H-DOOR_GAP)/2+WALL);
+      } else {
+        ctx.fillRect(x, -WALL, WALL, ROOM_H+WALL*2);
+      }
+    }
+
+    // animated icon for special doors (lock / crack)
+    if(state==='locked' || state==='cracked'){
+      const t = performance.now()/1000;
+      let ix, iy;
+      if(dirName==='N'){ ix=ROOM_W/2; iy=-WALL/2; }
+      else if(dirName==='S'){ ix=ROOM_W/2; iy=ROOM_H+WALL/2; }
+      else if(dirName==='W'){ ix=-WALL/2; iy=ROOM_H/2; }
+      else { ix=ROOM_W+WALL/2; iy=ROOM_H/2; }
+      ctx.translate(ix,iy);
+      const pulse = 1 + Math.sin(t*3)*0.15;
+      ctx.scale(pulse,pulse);
+      if(state==='locked'){
+        ctx.strokeStyle = '#ffffffbb'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0,-4,4,Math.PI,0); ctx.stroke();
+        ctx.fillStyle = '#ffffffdd';
+        ctx.fillRect(-5,-4,10,8);
+      } else {
+        ctx.strokeStyle = '#ffffff99'; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-6,-6); ctx.lineTo(-1,0); ctx.lineTo(-4,5);
+        ctx.moveTo(6,-6); ctx.lineTo(1,0); ctx.lineTo(4,5);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawFloorPattern(biome){
+    if(biome.key==='stone'){
+      // regular grid of stone slabs
+      for(let gx=0; gx<=ROOM_W; gx+=38){
+        ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,ROOM_H); ctx.stroke();
+      }
+      for(let gy=0; gy<=ROOM_H; gy+=38){
+        ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(ROOM_W,gy); ctx.stroke();
+      }
+    } else if(biome.key==='roots'){
+      // organic wavy lines, like roots running through the floor
+      for(let gy=20; gy<ROOM_H; gy+=52){
+        ctx.beginPath();
+        for(let gx=0; gx<=ROOM_W; gx+=20){
+          const yy = gy + Math.sin((gx+gy)*0.05)*10;
+          if(gx===0) ctx.moveTo(gx,yy); else ctx.lineTo(gx,yy);
+        }
+        ctx.stroke();
+      }
+    } else if(biome.key==='ice'){
+      // diagonal ice cracks, like fractured glass
+      const rnd = mulberry32(1234);
+      for(let i=0;i<14;i++){
+        const x1 = rnd()*ROOM_W, y1 = rnd()*ROOM_H;
+        const len = 40+rnd()*60, ang = rnd()*Math.PI*2;
+        ctx.beginPath();
+        ctx.moveTo(x1,y1);
+        ctx.lineTo(x1+Math.cos(ang)*len, y1+Math.sin(ang)*len);
+        ctx.stroke();
+      }
+    } else if(biome.key==='lava'){
+      // irregular glowing veins, like lava cracks
+      const rnd = mulberry32(5678);
+      ctx.save();
+      ctx.strokeStyle = biome.glow;
+      ctx.globalAlpha = 0.25;
+      for(let i=0;i<8;i++){
+        let x = rnd()*ROOM_W, y = rnd()*ROOM_H;
+        ctx.beginPath(); ctx.moveTo(x,y);
+        for(let s=0;s<5;s++){
+          x += (rnd()-0.5)*70; y += (rnd()-0.5)*70;
+          ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  // deterministic PRNG for stable per-room patterns (don't change every frame)
+  function mulberry32(seed){
+    let a = seed;
+    return function(){
+      a |= 0; a = (a+0x6D2B79F5)|0;
+      let t = Math.imul(a ^ a>>>15, 1|a);
+      t = (t + Math.imul(t ^ t>>>7, 61|t)) ^ t;
+      return ((t ^ t>>>14) >>> 0) / 4294967296;
+    };
+  }
+
+  function drawObstacle(o){
+    const biome = o.biome;
+    ctx.save();
+    const cx = o.x+o.w/2, cy = o.y+o.h/2;
+    if(biome==='roots'){
+      // organic shapes: cluster of circles
+      ctx.fillStyle = COLORS.obstacle;
+      ctx.beginPath(); ctx.arc(cx,cy, Math.min(o.w,o.h)/2, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(o.x+o.w*0.25, o.y+o.h*0.3, o.w*0.28, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(o.x+o.w*0.75, o.y+o.h*0.7, o.w*0.24, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#7ad14f55'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(cx,cy, Math.min(o.w,o.h)/2, 0, Math.PI*2); ctx.stroke();
+    } else if(biome==='ice'){
+      // angular crystal (diamond with facet)
+      ctx.fillStyle = COLORS.obstacle;
+      ctx.beginPath();
+      ctx.moveTo(cx, o.y); ctx.lineTo(o.x+o.w, cy); ctx.lineTo(cx, o.y+o.h); ctx.lineTo(o.x, cy);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#bfe9ffaa'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(cx,o.y); ctx.lineTo(cx,o.y+o.h); ctx.stroke();
+      ctx.stroke();
+    } else if(biome==='lava'){
+      // irregular rock with glow on the top edge
+      const rnd = mulberry32(Math.floor(o.seed));
+      ctx.fillStyle = COLORS.obstacle;
+      ctx.beginPath();
+      const pts = 7;
+      for(let i=0;i<pts;i++){
+        const a = (i/pts)*Math.PI*2;
+        const rr = (Math.min(o.w,o.h)/2) * (0.8+rnd()*0.3);
+        const px = cx+Math.cos(a)*rr, py = cy+Math.sin(a)*rr*0.85;
+        if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#ff8a4d88'; ctx.lineWidth=2; ctx.stroke();
+    } else {
+      // stone: straight block with fake volume
+      ctx.fillStyle = COLORS.obstacle;
+      ctx.fillRect(o.x,o.y,o.w,o.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillRect(o.x,o.y,o.w,4);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(o.x,o.y+o.h-4,o.w,4);
+      ctx.strokeStyle = COLORS.obstacleEdge;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(o.x,o.y,o.w,o.h);
+    }
+    ctx.restore();
+  }
+
+  // decorative scenery: wall fixtures at corners + small scattered floor details
+  function drawDecor(d, biome, t){
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    if(d.kind==='corner'){
+      if(biome.key==='stone'){
+        // torch bracket with flickering flame
+        const flick = 0.8 + Math.sin(t*14+d.seed)*0.15 + Math.sin(t*33+d.seed)*0.05;
+        ctx.fillStyle = '#3a2a1a';
+        ctx.fillRect(-3,-2,6,14);
+        ctx.shadowColor = '#ffb020'; ctx.shadowBlur = 14*flick;
+        ctx.fillStyle = `rgba(255,${140+Math.round(Math.sin(t*10+d.seed)*40)},32,0.92)`;
+        ctx.beginPath();
+        ctx.moveTo(0,-6-8*flick);
+        ctx.quadraticCurveTo(6,-6,3,2);
+        ctx.quadraticCurveTo(0,-2,-3,2);
+        ctx.quadraticCurveTo(-6,-6,0,-6-8*flick);
+        ctx.fill();
+      } else if(biome.key==='roots'){
+        // hanging vine with small leaves, gently swaying
+        const sway = Math.sin(t*1.5+d.seed)*4;
+        ctx.strokeStyle = '#4a7a3a'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0,-22); ctx.quadraticCurveTo(sway,-6, sway*0.6, 16);
+        ctx.stroke();
+        ctx.fillStyle = '#7ad14f';
+        for(let i=0;i<3;i++){
+          const yy = -16+i*10, xx = sway*(i/3);
+          ctx.beginPath(); ctx.ellipse(xx, yy, 4.5, 2.6, 0.4, 0, Math.PI*2); ctx.fill();
+        }
+      } else if(biome.key==='ice'){
+        // hanging icicles
+        ctx.fillStyle = 'rgba(191,233,255,0.55)';
+        for(let i=0;i<3;i++){
+          const ix = -8+i*8;
+          const len = 10+((Math.floor(d.seed)*7+i*13)%12);
+          ctx.beginPath();
+          ctx.moveTo(ix-3,-18); ctx.lineTo(ix+3,-18); ctx.lineTo(ix, -18+len);
+          ctx.closePath(); ctx.fill();
+        }
+      } else if(biome.key==='lava'){
+        // glowing ember brazier
+        ctx.fillStyle = '#2a1810';
+        ctx.beginPath(); ctx.arc(0,4,7,0,Math.PI); ctx.fill();
+        const glow = 0.7 + Math.sin(t*8+d.seed)*0.3;
+        ctx.shadowColor = '#ff8a4d'; ctx.shadowBlur = 16*glow;
+        ctx.fillStyle = `rgba(255,138,77,${0.6+glow*0.3})`;
+        ctx.beginPath(); ctx.arc(0,0,4*glow,0,Math.PI*2); ctx.fill();
+      }
+    } else {
+      // scattered floor detail
+      ctx.scale(d.size, d.size);
+      if(biome.key==='stone'){
+        // small rubble pile
+        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        ctx.beginPath(); ctx.ellipse(0,4,10,4,0,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = COLORS.obstacleEdge;
+        ctx.beginPath(); ctx.arc(-4,0,4,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(4,2,3,0,Math.PI*2); ctx.fill();
+      } else if(biome.key==='roots'){
+        // small fern tuft
+        ctx.strokeStyle = 'rgba(122,209,79,0.55)'; ctx.lineWidth = 2;
+        for(let i=0;i<4;i++){
+          const a = -Math.PI/2 + (i-1.5)*0.4;
+          ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(a)*10, Math.sin(a)*10); ctx.stroke();
+        }
+      } else if(biome.key==='ice'){
+        // small crystal cluster
+        ctx.fillStyle = 'rgba(127,212,255,0.35)';
+        ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(5,0); ctx.lineTo(0,8); ctx.lineTo(-5,0); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = 'rgba(191,233,255,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+      } else if(biome.key==='lava'){
+        // glowing ember patch
+        ctx.shadowColor = '#ff8a4d'; ctx.shadowBlur = 10;
+        ctx.fillStyle = 'rgba(255,138,77,0.5)';
+        ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  // ---------- Ambient particles (continuous atmosphere per biome) ----------
+  let ambientParticles = [];
+  function seedAmbient(biome){
+    ambientParticles = [];
+    const count = 18;
+    for(let i=0;i<count;i++){
+      ambientParticles.push(makeAmbientParticle(biome, true));
+    }
+  }
+  function makeAmbientParticle(biome, randomY){
+    const base = {
+      x: Math.random()*ROOM_W,
+      y: randomY ? Math.random()*ROOM_H : (biome.key==='ice' ? -10 : ROOM_H+10),
+      size: 1.5+Math.random()*2.5,
+      alpha: 0.2+Math.random()*0.4,
+      drift: (Math.random()-0.5)*10
+    };
+    if(biome.key==='ice'){ base.vy = 20+Math.random()*20; base.vx = base.drift; }
+    else if(biome.key==='lava'){ base.vy = -(15+Math.random()*25); base.vx = base.drift; }
+    else if(biome.key==='roots'){ base.vy = -(6+Math.random()*10); base.vx = base.drift*0.5; }
+    else { base.vy = (Math.random()-0.5)*6; base.vx = (Math.random()-0.5)*6; }
+    return base;
+  }
+  function updateAmbient(dt, biome){
+    for(const p of ambientParticles){
+      p.x += p.vx*dt; p.y += p.vy*dt;
+      if(biome.key==='ice' && p.y>ROOM_H+10) Object.assign(p, makeAmbientParticle(biome,false));
+      if(biome.key==='lava' && p.y<-10) Object.assign(p, makeAmbientParticle(biome,false));
+      if((biome.key==='stone'||biome.key==='roots')){
+        if(p.x<0||p.x>ROOM_W||p.y<-10||p.y>ROOM_H+10) Object.assign(p, makeAmbientParticle(biome,false));
+      }
+    }
+  }
+  function drawAmbient(biome){
+    ctx.save();
+    for(const p of ambientParticles){
+      ctx.globalAlpha = p.alpha;
+      ctx.fillStyle = biome.particle;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawRoom(){
+    const inst = curInst();
+    const biome = biomeFor(inst.meta.dist);
+
+    // floor with subtle radial gradient based on biome
+    const grad = ctx.createRadialGradient(ROOM_W/2,ROOM_H/2,40, ROOM_W/2,ROOM_H/2, ROOM_W*0.7);
+    grad.addColorStop(0, biome.floor);
+    grad.addColorStop(1, shadeColor(biome.floor, -14));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,ROOM_W,ROOM_H);
+
+    ctx.strokeStyle = biome.floorLine;
+    ctx.lineWidth = 1;
+    drawFloorPattern(biome);
+    // biome-colored fog
+    ctx.fillStyle = biome.fog;
+    ctx.fillRect(0,0,ROOM_W,ROOM_H);
+
+    // scenery: corner fixtures + scattered floor details
+    const decorT = performance.now()/1000;
+    for(const d of inst.decor){
+      drawDecor(d, biome, decorT);
+    }
+
+    // walls / doors
+    for(const d of DIRS){
+      const nx = current.x+d.dx, ny = current.y+d.dy;
+      const st = getDoorState(current.x,current.y,nx,ny);
+      if(!st){ drawWallSide(d.name, 'solid', biome); continue; }
+      if(!inst.cleared && st==='open'){ drawWallSide(d.name, 'sealed', biome); }
+      else drawWallSide(d.name, st, biome);
+    }
+
+    // obstacles: shape depends on biome
+    for(const o of inst.obstacles){
+      drawObstacle(o);
+    }
+
+    // chest with glow and floating animation
+    const meta = inst.meta;
+    if((meta.type==='item'||meta.type==='key'||meta.type==='secret') && !inst.chestTaken){
+      const t = performance.now()/1000;
+      const cx = ROOM_W/2, cy = ROOM_H/2 + Math.sin(t*2)*4;
+      ctx.save();
+      ctx.translate(cx,cy);
+      const chestColor = meta.type==='key' ? COLORS.chest : (meta.type==='secret' ? '#7fd1a8' : COLORS.chest);
+      ctx.shadowColor = chestColor; ctx.shadowBlur = 18 + Math.sin(t*3)*6;
+      ctx.fillStyle = chestColor;
+      ctx.beginPath();
+      ctx.moveTo(0,-18); ctx.lineTo(18,0); ctx.lineTo(0,18); ctx.lineTo(-18,0); ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#00000055'; ctx.lineWidth=2; ctx.stroke();
+      ctx.restore();
+    }
+
+    // room type marker (subtle, top area) for boss room
+    if(meta.type==='boss' && !inst.cleared){
+      ctx.fillStyle = 'rgba(226,85,90,0.08)';
+      ctx.fillRect(0,0,ROOM_W,ROOM_H);
+    }
+  }
+
+  function shadeColor(hex, percent){
+    const num = parseInt(hex.replace('#',''),16);
+    let r = (num>>16) + percent, g = (num>>8 & 0x00FF) + percent, b = (num & 0x0000FF) + percent;
+    r = clamp(r,0,255); g = clamp(g,0,255); b = clamp(b,0,255);
+    return '#' + (0x1000000 + r*0x10000 + g*0x100 + b).toString(16).slice(1);
+  }
+
+  // Small round eyes that track the player -- used by all enemy types to
+  // echo the player's cute-ball look, while each type keeps its own color,
+  // shape, and size. Unlike the player, enemies get no tail.
+  function drawTrackingEyes(r, dirx, diry){
+    const px = -diry, py = dirx;
+    const ef = r*0.45, es = r*0.45, er = r*0.36, pr = r*0.17, pl = r*0.12;
+    for(const side of [-1,1]){
+      const ex = dirx*ef + px*es*side;
+      const ey = diry*ef + py*es*side;
+      ctx.fillStyle = COLORS.eyeWhite;
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(ex, ey, er, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = COLORS.eyePupil;
+      ctx.beginPath(); ctx.arc(ex+dirx*pl, ey+diry*pl, pr, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  function drawEnemies(){
+    const t = performance.now()/1000;
+    for(const en of curInst().enemies){
+      ctx.save();
+      ctx.translate(en.x,en.y);
+      const flash = en.hitFlash>0;
+      const pulse = 1 + Math.sin(t*4 + en.x)*0.04;
+      // gaze direction: every enemy type keeps an eye on the player
+      const gdx = player.x-en.x, gdy = player.y-en.y;
+      const glen = Math.hypot(gdx,gdy) || 1;
+      const gx = gdx/glen, gy = gdy/glen;
+
+      ctx.save();
+      ctx.scale(pulse, pulse);
+      if(en.type==='chaser'){
+        ctx.shadowColor = COLORS.chaser; ctx.shadowBlur = flash ? 2 : 14;
+        ctx.fillStyle = flash ? '#ffffff' : COLORS.chaser;
+        ctx.beginPath(); ctx.arc(0,0,en.r,0,Math.PI*2); ctx.fill();
+      } else if(en.type==='turret'){
+        ctx.save();
+        const fatX = 1.2, fatY = 0.85; // wide + squashed = "fat"
+        const jiggle = 1 + Math.sin(t*3 + en.y)*0.03;
+        ctx.scale(fatX*jiggle, fatY*(2-jiggle));
+        ctx.shadowColor = COLORS.turret; ctx.shadowBlur = flash ? 2 : 14;
+        ctx.fillStyle = flash ? '#ffffff' : COLORS.turret;
+        ctx.beginPath(); ctx.arc(0,0,en.r,0,Math.PI*2); ctx.fill();
+        // soft highlight, echoing the player's glossy-ball look
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.ellipse(-en.r*0.28, -en.r*0.32, en.r*0.22, en.r*0.13, -0.6, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+      } else if(en.type==='boss'){
+        ctx.shadowColor = COLORS.chaser; ctx.shadowBlur = flash ? 2 : 22;
+        ctx.fillStyle = flash ? '#ffffff' : COLORS.chaser;
+        ctx.beginPath();
+        for(let i=0;i<6;i++){
+          const a = Math.PI/3*i - Math.PI/2 + t*0.3;
+          const px = Math.cos(a)*en.r, py = Math.sin(a)*en.r;
+          if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+        }
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+
+      // eyes: drawn in the pulse/rotation-free frame so they stay level and
+      // always point toward the player, regardless of the shape's own wobble
+      ctx.shadowBlur = 0;
+      drawTrackingEyes(en.r, gx, gy);
+
+      ctx.restore();
+
+      // hp bar for boss
+      if(en.type==='boss'){
+        const w=60;
+        ctx.fillStyle='#00000088';
+        ctx.fillRect(en.x-w/2, en.y-en.r-16, w, 6);
+        ctx.fillStyle = COLORS.chaser;
+        ctx.fillRect(en.x-w/2, en.y-en.r-16, w*(en.hp/en.maxHp), 6);
+      }
+    }
+  }
+
+  function drawProjectiles(){
+    ctx.save();
+    ctx.shadowColor = COLORS.projectile; ctx.shadowBlur = 12;
+    ctx.fillStyle = COLORS.projectile;
+    for(const p of projectiles){
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawBombs(){
+    for(const b of bombs){
+      ctx.save();
+      ctx.translate(b.x,b.y);
+      const urgency = clamp(1-(b.fuse/CONFIG.combat.bombFuseTime),0,1);
+      const wobble = Math.sin(performance.now()/1000*(20+urgency*30))*urgency*1.5;
+      ctx.translate(wobble,0);
+      ctx.fillStyle = COLORS.bomb;
+      ctx.beginPath(); ctx.arc(0,0,14,0,Math.PI*2); ctx.fill();
+      const blink = Math.sin(b.fuse*30) > 0;
+      ctx.shadowColor = COLORS.bombFuse; ctx.shadowBlur = blink ? 16 : 0;
+      ctx.fillStyle = blink ? COLORS.bombFuse : '#552200';
+      ctx.beginPath(); ctx.arc(0,-14,4,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawParticles(){
+    for(const pt of particles){
+      const lifeRatio = clamp(pt.life/pt.maxLife,0,1);
+      ctx.save();
+      ctx.globalAlpha = lifeRatio;
+      ctx.translate(pt.x, pt.y);
+      ctx.rotate(pt.rot);
+      const s = pt.size*lifeRatio;
+      ctx.fillStyle = pt.color;
+      if(pt.shape==='rect'){
+        ctx.fillRect(-s/2,-s/2,s,s);
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(0,-s); ctx.lineTo(s*0.87,s*0.5); ctx.lineTo(-s*0.87,s*0.5);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawPlayer(){
+    const t = performance.now()/1000;
+    const moving = (keys['ArrowLeft']||keys['KeyA']||keys['ArrowRight']||keys['KeyD']||keys['ArrowUp']||keys['KeyW']||keys['ArrowDown']||keys['KeyS']);
+    const bob = moving ? Math.sin(t*10)*2 : Math.sin(t*2.2)*1.5;
+    const ep = CONFIG.player;
+    const dlen = Math.hypot(player.dir.x, player.dir.y) || 1;
+    const dx = player.dir.x/dlen, dy = player.dir.y/dlen;
+    const px = -dy, py = dx; // perpendicular axis, used for eye spacing and tail wag
+    ctx.save();
+    ctx.translate(player.x, player.y + bob);
+    const blink = player.invuln>0 && Math.floor(player.invuln*12)%2===0;
+
+    // small wagging tail, drawn behind the body so the ball covers its base
+    ctx.save();
+    const wagSpeed = moving ? ep.tailWagSpeedMoving : ep.tailWagSpeedIdle;
+    const wagAmt = moving ? ep.tailWagAmplitude : ep.tailWagAmplitude*0.4;
+    const wag = Math.sin(t*wagSpeed) * wagAmt;
+    const tbx = -dx*(player.w*0.32), tby = -dy*(player.h*0.32);       // base, tucked under the body edge
+    const tcx = -dx*(ep.tailLength*0.55) + px*wag*0.5, tcy = -dy*(ep.tailLength*0.55) + py*wag*0.5;
+    const ttx = -dx*ep.tailLength + px*wag, tty = -dy*ep.tailLength + py*wag;
+    ctx.strokeStyle = COLORS.playerTail;
+    ctx.fillStyle = COLORS.playerTail;
+    ctx.lineWidth = ep.tailWidth;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(tbx, tby);
+    ctx.quadraticCurveTo(tcx, tcy, ttx, tty);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(ttx, tty, ep.tailTipRadius, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.shadowColor = biomeFor(curInst().meta.dist).glow;
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = blink ? '#ffffff' : COLORS.player;
+    // squash & stretch: stretches on attack, squashes slightly while moving
+    let sx = 1, sy = 1;
+    if(player.attacking>0){ sx = 1.3; sy = 0.85; }
+    else if(moving){ sx = 1 + Math.abs(Math.sin(t*10))*0.06; sy = 1 - Math.abs(Math.sin(t*10))*0.06; }
+    ctx.save();
+    ctx.scale(sx,sy);
+    // round, cute ball body (was a square)
+    ctx.beginPath();
+    ctx.arc(0, 0, player.w/2, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // soft highlight for a glossy, cute look
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(-player.w*0.22, -player.h*0.26, player.w*0.16, player.h*0.1, -0.6, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // two eyes, reacting to hurt/happy state and otherwise looking in the
+    // direction of movement
+    ctx.shadowBlur = 0;
+    if(player.hurtTimer>0){
+      // wide, startled "ouch" eyes: bigger, with a tiny centered pupil
+      for(const side of [-1,1]){
+        const ex = dx*ep.eyeForwardOffset + px*ep.eyeSpacing*side;
+        const ey = dy*ep.eyeForwardOffset + py*ep.eyeSpacing*side;
+        ctx.fillStyle = COLORS.eyeWhite;
+        ctx.beginPath();
+        ctx.arc(ex, ey, ep.eyeRadius*ep.hurtEyeScale, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = COLORS.eyePupil;
+        ctx.beginPath();
+        ctx.arc(ex, ey, ep.pupilRadius*0.75, 0, Math.PI*2);
+        ctx.fill();
+      }
+    } else if(player.happyTimer>0){
+      // happy, squinting ^‿^ eyes: upward curved arcs, no pupils
+      ctx.strokeStyle = COLORS.eyePupil;
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = 'round';
+      for(const side of [-1,1]){
+        const ex = dx*ep.eyeForwardOffset + px*ep.eyeSpacing*side;
+        const ey = dy*ep.eyeForwardOffset + py*ep.eyeSpacing*side;
+        ctx.beginPath();
+        ctx.arc(ex, ey+2, ep.eyeRadius*0.8, Math.PI*1.15, Math.PI*1.85);
+        ctx.stroke();
+      }
+    } else {
+      // neutral eyes, pupils leading toward the facing direction
+      for(const side of [-1,1]){
+        const ex = dx*ep.eyeForwardOffset + px*ep.eyeSpacing*side;
+        const ey = dy*ep.eyeForwardOffset + py*ep.eyeSpacing*side;
+        ctx.fillStyle = COLORS.eyeWhite;
+        ctx.beginPath();
+        ctx.arc(ex, ey, ep.eyeRadius, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = COLORS.eyePupil;
+        ctx.beginPath();
+        ctx.arc(ex + dx*ep.pupilLead, ey + dy*ep.pupilLead, ep.pupilRadius, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // sword swing visualization: a stick pivoting from +45deg to -45deg
+    // relative to the facing direction over the course of the attack, like
+    // a bat swing
+    if(player.attacking>0){
+      const p = CONFIG.player;
+      const progress = 1 - (player.attacking/p.attackDuration); // 0 at swing start -> 1 at swing end
+      const swingDeg = p.swordSwingStartDeg + (p.swordSwingEndDeg - p.swordSwingStartDeg)*progress;
+      const baseAngle = Math.atan2(player.dir.y, player.dir.x);
+      const angle = baseAngle + swingDeg*Math.PI/180;
+      ctx.save();
+      ctx.translate(player.x, player.y + bob);
+      ctx.rotate(angle);
+      ctx.fillStyle = COLORS.sword;
+      ctx.strokeStyle = COLORS.swordEdge;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if(ctx.roundRect) ctx.roundRect(p.swordPivotOffset, -p.swordWidth/2, p.swordLength, p.swordWidth, 2);
+      else ctx.rect(p.swordPivotOffset, -p.swordWidth/2, p.swordLength, p.swordWidth);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // shield visualization: a small plate held out in front of the player
+    if(player.shielding){
+      const so = CONFIG.player.shieldOffset, sw = CONFIG.player.shieldWidth, sh = CONFIG.player.shieldHeight;
+      ctx.save();
+      ctx.translate(player.x, player.y + bob);
+      ctx.rotate(Math.atan2(player.dir.y, player.dir.x));
+      ctx.fillStyle = COLORS.chest;
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(so-sw/2, -sh/2, sw, sh, 3) : ctx.rect(so-sw/2, -sh/2, sw, sh);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // godmode visual: pulsing ring surrounding the character
+    if(player.godmode){
+      const pulse = Math.sin(t*6)*3;
+      const r = player.w*0.9 + 10 + pulse;
+      ctx.save();
+      ctx.translate(player.x, player.y + bob);
+      ctx.strokeStyle = '#f4d35e';
+      ctx.shadowColor = '#f4d35e';
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.arc(0,0,r,0,Math.PI*2);
+      ctx.stroke();
+      ctx.setLineDash([6,5]);
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.5;
+      ctx.rotate(t*2);
+      ctx.beginPath();
+      ctx.arc(0,0,r+5,0,Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function render(){
+    ctx.save();
+    ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+
+    let sx=0, sy=0;
+    if(shake>0){ sx = (Math.random()-0.5)*shake; sy = (Math.random()-0.5)*shake; }
+    ctx.translate(WALL+sx, WALL+sy);
+
+    drawRoom();
+    drawAmbient(biomeFor(curInst().meta.dist));
+    drawBombs();
+    drawEnemies();
+    drawProjectiles();
+    drawParticles();
+    drawPlayer();
+
+    ctx.restore();
+
+    // vignette
+    const vg = ctx.createRadialGradient(CANVAS_W/2,CANVAS_H/2, CANVAS_H*0.25, CANVAS_W/2,CANVAS_H/2, CANVAS_H*0.75);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.45)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+
+    // flash overlay (damage / explosion)
+    if(flash>0){
+      ctx.fillStyle = `rgba(${flashColor},${flash*0.35})`;
+      ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+    }
+  }
+
+  // ---------- HUD ----------
+  function updateHud(){
+    const heartsEl = document.getElementById('hearts');
+    heartsEl.innerHTML = '';
+    const totalHearts = player.maxHp/2;
+    for(let i=0;i<totalHearts;i++){
+      const filled = player.hp >= (i+1)*2;
+      const half = !filled && player.hp > i*2;
+      const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('width','16'); svg.setAttribute('height','16');
+      svg.classList.add('heart');
+      const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+      poly.setAttribute('points','8,2 14,8 8,14 2,8');
+      poly.setAttribute('fill', (filled||half) ? '#e2555a' : '#333846');
+      poly.setAttribute('stroke','#00000055');
+      svg.appendChild(poly);
+      heartsEl.appendChild(svg);
+    }
+    document.getElementById('bombCount').textContent = player.bombs + '/' + player.maxBombs;
+    document.getElementById('keyWrap').style.display = player.hasKey ? 'flex' : 'none';
+    document.getElementById('godWrap').style.display = player.godmode ? 'flex' : 'none';
+  }
+
+  function buildMinimap(){
+    const b = biomeFor(curInst().meta.dist);
+    document.getElementById('biomeLabel').textContent = b.name;
+    document.getElementById('biomeLabel').style.color = b.glow;
+    const mm = document.getElementById('minimap');
+    mm.innerHTML = '';
+    const coords = [...dungeon.rooms.values()];
+    const xs = coords.map(r=>r.x), ys = coords.map(r=>r.y);
+    const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+    const cols = maxX-minX+1, rows = maxY-minY+1;
+    mm.style.gridTemplateColumns = `repeat(${cols}, 10px)`;
+    mm.style.gridTemplateRows = `repeat(${rows}, 10px)`;
+    for(let y=minY;y<=maxY;y++){
+      for(let x=minX;x<=maxX;x++){
+        const k = roomKey(x,y);
+        const div = document.createElement('div');
+        div.className = 'mm-cell';
+        const inst = roomInstances.get(k);
+        if(inst && inst.visited){
+          div.classList.add('visited');
+          if(inst.meta.type==='boss') div.classList.add('boss');
+          if(inst.meta.type==='item'||inst.meta.type==='key'||inst.meta.type==='secret') div.classList.add('item');
+        }
+        if(x===current.x && y===current.y) div.classList.add('current');
+        div.style.gridColumn = (x-minX+1);
+        div.style.gridRow = (y-minY+1);
+        mm.appendChild(div);
+      }
+    }
+  }
+
+  function showMessage(text, sub){
+    const msg = document.getElementById('msg');
+    document.getElementById('msgText').textContent = text;
+    document.getElementById('msgSub').textContent = sub || '';
+    msg.style.display = 'block';
+    document.getElementById('restart').style.display = 'inline-block';
+  }
+
+  // ---------- Main loop ----------
+  let lastTime = 0;
+  function loop(t){
+    const dt = Math.min(0.033, (t-lastTime)/1000 || 0);
+    lastTime = t;
+    update(dt);
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  newGame();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
