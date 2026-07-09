@@ -122,12 +122,14 @@ Object.assign(DungeonScene.prototype, {
       en.maxHp = newMaxHp;
       if(en.hpBarFill) en.hpBarFill.setSize(this.enemyHpBarWidth(en), CONFIG.enemies.hpBar.height);
 
-      if(en.enemyType === 'turret'){
+      if(en.enemyType === 'turret' || en.enemyType === 'bomber'){
         if(en.shootTimer){
           const wasPaused = en.shootTimer.paused;
           en.shootTimer.remove(false);
-          const newDelay = Math.max(300, CONFIG.enemies.turret.shootCooldown * 1000 / scale);
-          en.shootTimer = this.time.addEvent({ delay: newDelay, loop: true, callback: () => this.turretShoot(en) });
+          const baseCooldown = en.enemyType === 'turret' ? CONFIG.enemies.turret.shootCooldown : CONFIG.enemies.bomber.throwCooldown;
+          const callback = en.enemyType === 'turret' ? () => this.turretShoot(en) : () => this.bomberThrowBomb(en);
+          const newDelay = Math.max(300, baseCooldown * 1000 / scale);
+          en.shootTimer = this.time.addEvent({ delay: newDelay, loop: true, callback });
           en.shootTimer.paused = wasPaused;
         }
       } else {

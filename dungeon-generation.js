@@ -172,25 +172,35 @@ function makeEnemies(type, distv, pits){
   for(let i = 0; i < count; i++){
     const isBoss = isBossRoom;
     const isTurret = !isBoss && rand() < ec.turretChance;
+    // Bomber/kamikaze are only rolled for enemies that didn't already come
+    // up as something earlier in the chain, so their combined share of the
+    // room stays close to what it was before each was added.
+    const isBomber = !isBoss && !isTurret && rand() < ec.bomberChance;
+    const isKamikaze = !isBoss && !isTurret && !isBomber && rand() < ec.kamikazeChance;
     const { x, y } = pickSpawnClearOfPits(pits);
-    const stats = isBoss ? ec.boss : (isTurret ? ec.turret : ec.chaser);
-    enemies.push({
-      type: isBoss ? 'boss' : (isTurret ? 'turret' : 'chaser'),
-      x, y, hp: stats.hp, maxHp: stats.hp, r: stats.radius,
-      speed: isBoss ? ec.boss.speed : (isTurret ? 0 : ec.chaser.speedBase + distv * ec.chaser.speedPerDist)
-    });
+    const type = isBoss ? 'boss' : isTurret ? 'turret' : isBomber ? 'bomber' : isKamikaze ? 'kamikaze' : 'chaser';
+    const stats = isBoss ? ec.boss : isTurret ? ec.turret : isBomber ? ec.bomber : isKamikaze ? ec.kamikaze : ec.chaser;
+    let speed = 0;
+    if(isBoss) speed = ec.boss.speed;
+    else if(isTurret || isBomber) speed = 0;
+    else if(isKamikaze) speed = ec.kamikaze.speedBase + distv * ec.kamikaze.speedPerDist;
+    else speed = ec.chaser.speedBase + distv * ec.chaser.speedPerDist;
+    enemies.push({ type, x, y, hp: stats.hp, maxHp: stats.hp, r: stats.radius, speed });
   }
   if(isBossRoom){
     const escorts = randInt(ec.bossEscortsMin, ec.bossEscortsMax);
     for(let i = 0; i < escorts; i++){
       const isTurret = rand() < ec.bossEscortTurretChance;
+      const isBomber = !isTurret && rand() < ec.bossEscortBomberChance;
+      const isKamikaze = !isTurret && !isBomber && rand() < ec.bossEscortKamikazeChance;
       const { x, y } = pickSpawnClearOfPits(pits);
-      const stats = isTurret ? ec.turret : ec.chaser;
-      enemies.push({
-        type: isTurret ? 'turret' : 'chaser', x, y,
-        hp: stats.hp, maxHp: stats.hp, r: stats.radius,
-        speed: isTurret ? 0 : ec.chaser.speedBase + distv * ec.chaser.speedPerDist
-      });
+      const type = isTurret ? 'turret' : isBomber ? 'bomber' : isKamikaze ? 'kamikaze' : 'chaser';
+      const stats = isTurret ? ec.turret : isBomber ? ec.bomber : isKamikaze ? ec.kamikaze : ec.chaser;
+      let speed = 0;
+      if(isTurret || isBomber) speed = 0;
+      else if(isKamikaze) speed = ec.kamikaze.speedBase + distv * ec.kamikaze.speedPerDist;
+      else speed = ec.chaser.speedBase + distv * ec.chaser.speedPerDist;
+      enemies.push({ type, x, y, hp: stats.hp, maxHp: stats.hp, r: stats.radius, speed });
     }
   }
   return enemies;

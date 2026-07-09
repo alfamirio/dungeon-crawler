@@ -10,7 +10,7 @@ Object.assign(DungeonScene.prototype, {
 
   // Creates the persistent EnemySprite for a spawn descriptor; starts deactivated.
   spawnEnemySprite(desc){
-    const tex = desc.type === 'boss' ? 'tex_boss' : desc.type === 'turret' ? 'tex_turret' : 'tex_chaser';
+    const tex = desc.type === 'boss' ? 'tex_boss' : desc.type === 'turret' ? 'tex_turret' : desc.type === 'bomber' ? 'tex_bomber_turret' : desc.type === 'kamikaze' ? 'tex_kamikaze' : 'tex_chaser';
     const spr = this.enemiesGroup.create(desc.x + WALL, desc.y + WALL, tex);
     spr.enemyType = desc.type;
     spr.hp = desc.hp; spr.maxHp = desc.maxHp; spr.r = desc.r; spr.speed = desc.speed;
@@ -27,6 +27,17 @@ Object.assign(DungeonScene.prototype, {
         callback: () => this.turretShoot(spr)
       });
     }
+    if(desc.type === 'bomber'){
+      spr.body.setImmovable(true);
+      // Repeating timer for lobbed bombs (see bomberThrowBomb below); reuses
+      // the same 'shootTimer' property name as turrets so activateEnemy(),
+      // deactivateEnemy(), and adaptiveApplyToRoom() handle both uniformly.
+      spr.shootTimer = this.time.addEvent({
+        delay: CONFIG.enemies.bomber.throwCooldown * 1000,
+        loop: true,
+        callback: () => this.bomberThrowBomb(spr)
+      });
+    }
     if(desc.type === 'boss'){
       const barCfg = CONFIG.enemies.hpBar;
       const bx = desc.x + WALL + barCfg.xOffset, by = desc.y + WALL - desc.r - barCfg.yMargin;
@@ -34,6 +45,12 @@ Object.assign(DungeonScene.prototype, {
       spr.hpBarFill = this.add.rectangle(bx, by, this.enemyHpBarWidth(spr), barCfg.height, COLORS.chaser, 1).setOrigin(0, 0.5).setDepth(6);
       // Continuous spin at ~0.6 rad/s
       spr.spinTween = this.tweens.add({ targets: spr, angle: 360, duration: (2 * Math.PI / 0.6) * 1000, repeat: -1, ease: 'Linear' });
+    }
+    if(desc.type === 'kamikaze'){
+      // Arm/fuse state, driven per-frame in stepEnemies() and consumed by
+      // kamikazeExplode() below; starts unarmed until the player closes in.
+      spr._kamikazeArmed = false;
+      spr._kamikazeTimer = 0;
     }
     this.deactivateEnemy(spr);
     return spr;
@@ -48,6 +65,85 @@ Object.assign(DungeonScene.prototype, {
     proj.body.setAllowGravity(false);
     this.physics.moveToObject(proj, this.playerSprite, CONFIG.combat.projectileSpeed);
     proj.setDepth(3);
+  },
+
+  // Lobs a fused bomb at the player's current position; guards against a
+  // dead/deactivated bomber or game over, same as turretShoot(). The bomb
+  // is a real bombsGroup member, so it detonates through the exact same
+  // detonateBomb() path as a player-placed bomb (area damage to whatever's
+  // in the blast radius, including other enemies, plus cracked-wall breaks).
+  bomberThrowBomb(en){
+    if(!en.active || this.gameOver || this.gameWon) return;
+    const bc = CONFIG.enemies.bomber;
+    const p = this.playerSprite;
+    const tx = p.x, ty = p.y;
+    SFX.bombPlace();
+    const spr = this.bombsGroup.create(en.x, en.y, 'tex_bomb');
+    spr.body.setAllowGravity(false);
+    spr.setTint(COLORS.bomberTurret);
+    spr.setDepth(2);
+    // Lobbed, so it arcs over obstacles/pits en route — no wall collision,
+    // just travels straight to the landing spot and stops there.
+    const travelDist = Math.max(1, Phaser.Math.Distance.Between(en.x, en.y, tx, ty));
+    const travelTime = travelDist / bc.throwSpeed;
+    this.physics.moveTo(spr, tx, ty, bc.throwSpeed);
+    spr.fuseTween = this.tweens.add({ targets: spr, alpha: { from: 0.75, to: 1 }, duration: 140, yoyo: true, repeat: -1 });
+    this.time.delayedCall(travelTime * 1000, () => {
+      if(spr.active) spr.body.setVelocity(0, 0);
+    });
+    spr.fuseTimer = this.time.delayedCall(travelTime * 1000 + bc.fuseTime * 1000, () => this.detonateBomb(spr));
+  },
+
+  // Detonates an armed kamikaze in place: area damage via the same
+  // overlapCirc() sweep detonateBomb() uses (player + other enemies),
+  // cracked-wall break check, then removes it from the room. Doesn't go
+  // through destroyEnemySprite's default burst/SFX since this plays its
+  // own bomb-like explosion effect instead of a regular death poof.
+  kamikazeExplode(en){
+    if(en._exploding) return;
+    en._exploding = true;
+    en.body.enable = false;
+    const kc = CONFIG.enemies.kamikaze;
+    this.burst(en.rx, en.ry, COLORS.kamikaze, 22);
+    SFX.bombExplode();
+    const e = CONFIG.effects;
+    this.cameras.main.shake(e.bombShake, e.bombShakeMag);
+    this.cameras.main.flash(180, 255, 90, 70);
+    this.hitStop = Math.max(this.hitStop, e.bombHitStop);
+    const hitBodies = this.physics.overlapCirc(en.x, en.y, kc.explodeRadius, true, true);
+    for(const body of hitBodies){
+      const go = body.gameObject;
+      if(!go || !go.active || go === en) continue;
+      if(go === this.playerSprite){
+        this.damagePlayer(kc.explodeDamage);
+      } else if(go instanceof EnemySprite){
+        go.hp -= kc.explodeDamage;
+        this.triggerEnemyHitFlash(go, CONFIG.combat.bombHitFlash);
+        if(go.hpBarFill) go.hpBarFill.setSize(this.enemyHpBarWidth(go), CONFIG.enemies.hpBar.height);
+      }
+    }
+    this.tryBreakCrackedNear(en.rx, en.ry);
+
+    const roomInst = this.curInst();
+    const idx = roomInst.enemies.indexOf(en);
+    if(idx >= 0) roomInst.enemies.splice(idx, 1);
+    this.destroyEnemySprite(en, { burst: false });
+    this.stats.enemiesDefeated++;
+    this.updateStatsPanel();
+
+    if(!roomInst.cleared && roomInst.enemies.length === 0){
+      roomInst.cleared = true;
+      this.adaptiveOnRoomClear();
+      this.rebuildWalls();
+      this.rebuildChest(roomInst);
+      if(roomInst.meta.type === 'boss'){
+        this.gameWon = true;
+        this.showMessage('Dungeon complete!', 'press retry for another seed');
+        SFX.victory();
+      } else {
+        SFX.roomClear();
+      }
+    }
   },
 
   activateEnemy(en){
@@ -208,8 +304,13 @@ Object.assign(DungeonScene.prototype, {
     } else {
       const contactDamage = en.enemyType === 'boss' ? CONFIG.enemies.boss.contactDamage
         : en.enemyType === 'turret' ? CONFIG.enemies.turret.contactDamage
+        : en.enemyType === 'bomber' ? CONFIG.enemies.bomber.contactDamage
+        : en.enemyType === 'kamikaze' ? CONFIG.enemies.kamikaze.contactDamage
         : CONFIG.enemies.chaser.contactDamage;
-      this.damagePlayer(contactDamage);
+      // Kamikaze's contact damage is 0 by design (its explosion deals the
+      // damage instead) — skip damagePlayer() entirely so bumping into an
+      // unarmed one doesn't trigger a fake hurt-flash/invuln window.
+      if(contactDamage > 0) this.damagePlayer(contactDamage);
     }
   },
 
@@ -431,13 +532,35 @@ Object.assign(DungeonScene.prototype, {
         continue;
       }
 
-      if(en.enemyType === 'chaser' || en.enemyType === 'boss'){
+      if(en.enemyType === 'chaser' || en.enemyType === 'boss' || en.enemyType === 'kamikaze'){
         if(dist(en.rx, en.ry, p.rx, p.ry) > 1){
           // moveToObject aims and sets velocity toward the player
           this.physics.moveToObject(en, p, en.speed);
         } else en.setVelocity(0, 0);
-      } else if(en.enemyType === 'turret'){
+      } else if(en.enemyType === 'turret' || en.enemyType === 'bomber'){
         en.setVelocity(0, 0);
+      }
+
+      // Kamikaze: arms once within triggerRadius, then blinks down a short
+      // fuse before detonating (kamikazeExplode) — a one-way commitment,
+      // same spirit as a thrown bomb but self-carried into melee range.
+      if(en.enemyType === 'kamikaze' && !en._exploding){
+        const kc = CONFIG.enemies.kamikaze;
+        if(!en._kamikazeArmed){
+          if(dist(en.rx, en.ry, p.rx, p.ry) <= kc.triggerRadius){
+            en._kamikazeArmed = true;
+            en._kamikazeTimer = kc.fuseTime;
+            SFX.bombPlace();
+          }
+        } else {
+          en._kamikazeTimer -= dt;
+          const blinkOn = Math.floor(en._kamikazeTimer * 16) % 2 === 0;
+          en.setTint(blinkOn ? 0xffffff : COLORS.kamikaze);
+          if(en._kamikazeTimer <= 0){
+            this.kamikazeExplode(en);
+            continue;
+          }
+        }
       }
 
       // Boss health bar position sync; width only updates when hp changes
