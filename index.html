@@ -34,12 +34,64 @@
   #title{
     font-size:13px; letter-spacing:3px; text-transform:uppercase; color:var(--muted);
   }
+  #main{
+    display:flex; flex-direction:row; align-items:stretch; gap:10px;
+  }
+  #sidebar{
+    width:220px;
+    background: var(--panel);
+    box-shadow: 0 0 0 2px #000, 0 10px 40px rgba(0,0,0,.6);
+    border-radius:6px;
+    padding:16px 14px;
+    display:flex;
+    flex-direction:column;
+    gap:20px;
+    overflow-y:auto;
+  }
+  .sb-section-title{
+    font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--muted);
+    padding-bottom:8px; margin-bottom:2px; border-bottom:1px solid #262b39;
+  }
+  .sb-stat-row{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:13px; padding:4px 0; color:var(--text);
+  }
+  .sb-stat-row .sb-label{ color:var(--muted); }
+  .sb-stat-row .sb-value{ font-weight:600; }
+  .sb-toggle-row{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:13px; padding:6px 0; color:var(--text);
+  }
+  .sb-switch{ position:relative; width:38px; height:20px; flex-shrink:0; }
+  .sb-switch input{ opacity:0; width:0; height:0; position:absolute; }
+  .sb-slider{
+    position:absolute; inset:0; background:#2a2f3d; border-radius:999px;
+    cursor:pointer; transition:background .15s;
+  }
+  .sb-slider::before{
+    content:''; position:absolute; width:14px; height:14px; left:3px; top:3px;
+    background:#7d8598; border-radius:50%; transition:transform .15s, background .15s;
+  }
+  .sb-switch input:checked + .sb-slider{ background:var(--accent); }
+  .sb-switch input:checked + .sb-slider::before{ transform:translateX(18px); background:#0b1410; }
+  .sb-btn{
+    display:block; width:100%; padding:10px 8px; margin-top:8px;
+    background:#20242f; border:1px solid #2a2f3d; border-radius:6px;
+    color:var(--text); font-size:12px; letter-spacing:1px; font-weight:600;
+    text-transform:uppercase; text-align:center; cursor:pointer;
+    font-family:inherit;
+    transition:background .15s, border-color .15s;
+  }
+  .sb-btn:first-child{ margin-top:0; }
+  .sb-btn:hover{ background:#262b39; border-color:var(--accent); }
+  .sb-btn:active{ transform:translateY(1px); }
   #stage{
     position:relative;
     box-shadow: 0 0 0 2px #000, 0 10px 40px rgba(0,0,0,.6);
     border-radius:6px; overflow:hidden;
     width: min(94vw, 82vh * (1200/900));
     aspect-ratio: 1200 / 900;
+    flex-shrink:0;
   }
   #game{
     position:absolute; inset:0; width:100%; height:100%; background: var(--bg);
@@ -54,8 +106,53 @@
 <body>
 <div id="app">
   <div id="title">Generated dungeon &mdash; Phaser 4 port</div>
-  <div id="stage">
-    <div id="game"></div>
+  <div id="main">
+    <div id="sidebar">
+      <div class="sb-section">
+        <div class="sb-section-title">Run Stats</div>
+        <div class="sb-stat-row"><span class="sb-label">Rooms visited</span><span class="sb-value" id="stat-rooms">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Enemies defeated</span><span class="sb-value" id="stat-enemies">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Bombs used</span><span class="sb-value" id="stat-bombs">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Arrows fired</span><span class="sb-value" id="stat-arrows">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Dashes used</span><span class="sb-value" id="stat-dashes">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Jumps used</span><span class="sb-value" id="stat-jumps">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Depth</span><span class="sb-value" id="stat-depth">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Biome</span><span class="sb-value" id="stat-biome">&mdash;</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Difficulty</span><span class="sb-value" id="stat-difficulty">0.00</span></div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-section-title">Config</div>
+        <div class="sb-toggle-row">
+          <span class="sb-label">Music</span>
+          <label class="sb-switch">
+            <input type="checkbox" id="cfg-music">
+            <span class="sb-slider"></span>
+          </label>
+        </div>
+        <div class="sb-toggle-row">
+          <span class="sb-label">Invincibility</span>
+          <label class="sb-switch">
+            <input type="checkbox" id="cfg-invincible">
+            <span class="sb-slider"></span>
+          </label>
+        </div>
+        <div class="sb-toggle-row">
+          <span class="sb-label">Unlock all</span>
+          <label class="sb-switch">
+            <input type="checkbox" id="cfg-unlock">
+            <span class="sb-slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="sb-section">
+        <button class="sb-btn" id="btn-clear-room">Clear room</button>
+        <button class="sb-btn" id="btn-warp-boss">Warp to boss</button>
+        <button class="sb-btn" id="btn-warp-start">Warp to start</button>
+      </div>
+    </div>
+    <div id="stage">
+      <div id="game"></div>
+    </div>
   </div>
   <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; Y: debug warp to boss &nbsp;&middot;&nbsp; H: return to start room</span></div>
 </div>
@@ -189,6 +286,9 @@
   // ---------- Utils (pure, engine-agnostic — unchanged from the prototype) ----------
   function rectsOverlap(a, b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
   function dist(x1, y1, x2, y2){ return Phaser.Math.Distance.Between(x1, y1, x2, y2); }
+
+  // Reference to the live DungeonScene instance, used by the HTML sidebar controls
+  let DUNGEON_SCENE = null;
 
   // Single seedable RNG source for the whole run; re-seeded at the start of newGame()
   let rng = new Phaser.Math.RandomDataGenerator();
@@ -455,6 +555,10 @@
 
     // ---------- Setup ----------
     create(){
+      DUNGEON_SCENE = this;
+      // Run-stat counters surfaced in the HTML sidebar (see updateStatsPanel)
+      this.stats = { enemiesDefeated: 0, bombsUsed: 0 };
+
       this.cameras.main.setBackgroundColor(0x000000);
       this.physics.world.setBounds(0, 0, CANVAS_W, CANVAS_H);
 
@@ -516,7 +620,11 @@
       this.playerSprite.on('changedata-bombs', (_obj, value) => this.ui.setBombs(value, this.playerSprite.maxBombs));
       this.playerSprite.on('changedata-maxBombs', (_obj, value) => this.ui.setBombs(this.playerSprite.bombs, value));
       this.playerSprite.on('changedata-hasKey', (_obj, value) => this.ui.setKey(value));
-      this.playerSprite.on('changedata-godmode', (_obj, value) => this.ui.setGod(value));
+      this.playerSprite.on('changedata-godmode', (_obj, value) => {
+        this.ui.setGod(value);
+        const chk = document.getElementById('cfg-invincible');
+        if(chk) chk.checked = value;
+      });
 
       this.swordSprite = this.physics.add.sprite(WALL, WALL, 'tex_sword');
       this.swordSprite.setCircle(22, this.swordSprite.width / 2 - 22, this.swordSprite.height / 2 - 22);
@@ -800,10 +908,15 @@
       this.gameWon = false;
       this.hitStop = 0;
       this._swordHitSet = new Set();
+      this.stats = { enemiesDefeated: 0, bombsUsed: 0 };
+      this.unlockAllActive = false;
+      const unlockChk = document.getElementById('cfg-unlock');
+      if(unlockChk) unlockChk.checked = false;
 
       this.enterRoom();
       this.seedAmbient(this.biomeNow());
       this.buildMinimap();
+      this.updateStatsPanel();
     }
 
 
@@ -913,6 +1026,10 @@
     // burst: play a death-particle burst. destroySprite: false when the
     // caller destroys the sprite itself right after (e.g. newGame).
     destroyEnemySprite(en, { burst = false, burstCount = 16, destroySprite = true } = {}){
+      if(burst){
+        this.stats.enemiesDefeated++;
+        this.updateStatsPanel();
+      }
       if(burst) this.burst(en.rx, en.ry, en.enemyType === 'boss' ? COLORS.chest : COLORS.enemyHitTint, burstCount);
       if(en.hpBarBg){ en.hpBarBg.destroy(); en.hpBarFill.destroy(); }
       if(en.spinTween) en.spinTween.stop();
@@ -1226,6 +1343,7 @@
       this.enterRoom();
       this.seedAmbient(this.biomeNow());
       this.buildMinimap();
+      this.updateStatsPanel();
     }
 
     warpToBossRoom(){
@@ -1238,6 +1356,7 @@
       this.enterRoom();
       this.seedAmbient(this.biomeNow());
       this.buildMinimap();
+      this.updateStatsPanel();
     }
 
     // ---------- Ambient atmosphere particles, reconfigured per biome on room entry ----------
@@ -1432,6 +1551,8 @@
       // JustDown() detects the key-press edge
       if(Phaser.Input.Keyboard.JustDown(k.bomb) && p.bombs > 0){
         p.bombs--;
+        this.stats.bombsUsed++;
+        this.updateStatsPanel();
         const spr = this.bombsGroup.create(p.x, p.y, 'tex_bomb');
         spr.setImmovable(true);
         spr.body.setAllowGravity(false);
@@ -1444,24 +1565,50 @@
     }
 
     // ---- Debug keys: K (kill room), I (godmode), Y (warp to boss) ----
+    // These delegate to shared methods also used by the HTML sidebar buttons/toggles.
     handleDebugKeys(){
       const p = this.playerSprite;
       const k = this.keys;
 
-      if(Phaser.Input.Keyboard.JustDown(k.dbgKill)){
-        const room = this.curInst();
-        for(const en of room.enemies){
-          this.destroyEnemySprite(en, { burst: true, burstCount: 14 });
-        }
-        room.enemies.length = 0;
-      }
-      if(Phaser.Input.Keyboard.JustDown(k.dbgGod)){
-        p.godmode = !p.godmode;
-        this.setGodmodeVisual(p.godmode);
-      }
+      if(Phaser.Input.Keyboard.JustDown(k.dbgKill)) this.debugKillRoom();
+      if(Phaser.Input.Keyboard.JustDown(k.dbgGod)) this.debugToggleGodmode();
       if(p.godmode) this.godRingSprite.setPosition(p.x, p.y);
       if(Phaser.Input.Keyboard.JustDown(k.dbgWarp)) this.warpToBossRoom();
       if(Phaser.Input.Keyboard.JustDown(k.dbgHome)) this.goToStartRoom();
+    }
+
+    // Clears every enemy in the current room (K key / sidebar "Clear room")
+    debugKillRoom(){
+      const room = this.curInst();
+      for(const en of room.enemies){
+        this.destroyEnemySprite(en, { burst: true, burstCount: 14 });
+      }
+      room.enemies.length = 0;
+    }
+
+    // Toggles invincibility (I key / sidebar "Invincibility" switch)
+    debugToggleGodmode(){
+      const p = this.playerSprite;
+      p.godmode = !p.godmode;
+      this.setGodmodeVisual(p.godmode);
+    }
+
+    // Sets invincibility to an explicit on/off state (used by the sidebar switch)
+    setGodmode(on){
+      const p = this.playerSprite;
+      p.godmode = on;
+      this.setGodmodeVisual(on);
+    }
+
+    // Unlocks every locked door in the dungeon (sidebar "Unlock all" switch).
+    // One-way cheat: turning the switch back off does not re-lock doors.
+    setUnlockAll(on){
+      this.unlockAllActive = on;
+      if(!on) return;
+      for(const door of this.dungeon.doors.values()){
+        if(door.state === 'locked') door.state = 'open';
+      }
+      this.rebuildWalls();
     }
 
     // Returns to the starting room of the current dungeon (no reseed/reset)
@@ -1473,6 +1620,7 @@
       this.enterRoom();
       this.seedAmbient(this.biomeNow());
       this.buildMinimap();
+      this.updateStatsPanel();
     }
 
     // ---- Enemies: AI movement, death cleanup, hp-bar sync, room-clear check ----
@@ -1533,6 +1681,26 @@
 
     showMessage(text, sub){
       this.ui.showMessage(text, sub);
+    }
+
+    // ---------- HTML sidebar: run-stats panel ----------
+    // Note: arrows/dashes/jumps have no corresponding mechanic in this build
+    // yet, so those rows stay at their static "0" and are left for later.
+    updateStatsPanel(){
+      const inst = this.curInst();
+      const visitedCount = [...this.roomInstances.values()].filter(r => r.visited).length;
+      const biome = this.biomeNow();
+      const depth = inst.meta.dist;
+      const maxDist = this.dungeon.maxDist || 1;
+      const difficulty = Phaser.Math.Clamp(0.3 + 0.7 * (depth / maxDist), 0, 1);
+
+      const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+      set('stat-rooms', visitedCount);
+      set('stat-enemies', this.stats.enemiesDefeated);
+      set('stat-bombs', this.stats.bombsUsed);
+      set('stat-depth', depth);
+      set('stat-biome', biome.name);
+      set('stat-difficulty', difficulty.toFixed(2));
     }
   }
 
@@ -1671,6 +1839,27 @@
     },
     scene: [DungeonScene, UIScene]
   });
+
+  // ---------- HTML sidebar wiring ----------
+  // Buttons/toggles call through to DUNGEON_SCENE (set in DungeonScene.create()).
+  document.getElementById('btn-clear-room').addEventListener('click', () => {
+    if(DUNGEON_SCENE) DUNGEON_SCENE.debugKillRoom();
+  });
+  document.getElementById('btn-warp-boss').addEventListener('click', () => {
+    if(DUNGEON_SCENE) DUNGEON_SCENE.warpToBossRoom();
+  });
+  document.getElementById('btn-warp-start').addEventListener('click', () => {
+    if(DUNGEON_SCENE) DUNGEON_SCENE.goToStartRoom();
+  });
+  document.getElementById('cfg-invincible').addEventListener('change', (e) => {
+    if(DUNGEON_SCENE) DUNGEON_SCENE.setGodmode(e.target.checked);
+  });
+  document.getElementById('cfg-unlock').addEventListener('change', (e) => {
+    if(DUNGEON_SCENE) DUNGEON_SCENE.setUnlockAll(e.target.checked);
+  });
+  // Music: no audio system exists yet in this build. The switch is wired up
+  // and ready, just waiting on a sound implementation to hook into.
+  document.getElementById('cfg-music').addEventListener('change', () => {});
 })();
 </script>
 </body>
