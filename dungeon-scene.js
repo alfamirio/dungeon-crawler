@@ -51,6 +51,13 @@ class DungeonScene extends Phaser.Scene {
     // Boss-room red tint, toggled in rebuildWalls()
     this.bossTintRect = this.add.rectangle(WALL + ROOM_W / 2, WALL + ROOM_H / 2, ROOM_W, ROOM_H, COLORS.chaser, 0.08).setDepth(0.9).setVisible(false);
 
+    // Per-biome atmospheric fog/tint overlay — color + strength driven by
+    // BIOMES[].fog, applied in rebuildWalls() on every room entry. Sits above
+    // all in-world sprites (players/enemies/obstacles) but below the HUD,
+    // since UIScene is a separate scene layered on top regardless of depth.
+    this.fogRect = this.add.rectangle(WALL + ROOM_W / 2, WALL + ROOM_H / 2, ROOM_W, ROOM_H, 0xffffff, 0).setDepth(6).setAlpha(0);
+    this.fogTween = null;
+
     // Subtle vignette via Phaser's camera filter (external = whole-screen effects)
     this.cameras.main.filters.external.addVignette(0.5, 0.5, 0.9, 0.2, 0x000000);
 
@@ -154,6 +161,7 @@ class DungeonScene extends Phaser.Scene {
     this.decorSprites = [];
     this.wallIconSprites = [];
     this.pitSprites = [];
+    this.obstacleRockSprites = [];
     this.chestSprite = null;
     this.chestGlow = null;
     this._activeEnemies = null;
@@ -273,7 +281,7 @@ class DungeonScene extends Phaser.Scene {
   }
 
   curInst(){ return this.roomInstances.get(roomKey(this.current.x, this.current.y)); }
-  biomeNow(){ return biomeFor(this.curInst().meta.dist, this.dungeon.maxDist); }
+  biomeNow(){ return this.curInst().meta.biome; }
   getDoorState(x1, y1, x2, y2){ const d = this.dungeon.doors.get(doorKey(x1, y1, x2, y2)); return d ? d.state : null; }
   isDoorPassable(x1, y1, x2, y2){
     const inst = this.curInst();

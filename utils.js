@@ -60,3 +60,17 @@ function doorKey(x1, y1, x2, y2){
   return x1 + ',' + y1 + '|' + x2 + ',' + y2;
 }
 
+// Parses a 'rgba(r,g,b,a)' / 'rgb(r,g,b)' string (as used by BIOMES[].fog in
+// config.js) into a Phaser-friendly { color, alpha } pair, e.g. for
+// rectangle.setFillStyle(color, alpha). Falls back to a transparent white
+// if the string doesn't match, so a malformed fog value never throws.
+function parseRgba(str){
+  const m = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/.exec(str || '');
+  if(!m) return { color: 0xffffff, alpha: 0 };
+  const r = Phaser.Math.Clamp(Math.round(parseFloat(m[1])), 0, 255);
+  const g = Phaser.Math.Clamp(Math.round(parseFloat(m[2])), 0, 255);
+  const b = Phaser.Math.Clamp(Math.round(parseFloat(m[3])), 0, 255);
+  const a = m[4] !== undefined ? Phaser.Math.Clamp(parseFloat(m[4]), 0, 1) : 1;
+  return { color: (r << 16) | (g << 8) | b, alpha: a };
+}
+

@@ -14,12 +14,17 @@ Object.assign(DungeonScene.prototype, {
     const inst = this.curInst();
 
     this.obstaclesGroup.clear(true, true);
+    // Per-biome obstacle art (see textures.js: OBSTACLE_DRAWERS / tex_obstacle_<key>);
+    // falls back to the generic 'tex_obstacle' crate if a biome key has no variant.
+    const obstacleTexKey = this.textures.exists('tex_obstacle_' + this.biomeNow().key)
+      ? 'tex_obstacle_' + this.biomeNow().key : 'tex_obstacle';
     for(const o of inst.obstacles){
-      const img = this.obstaclesGroup.create(o.x + o.w / 2 + WALL, o.y + o.h / 2 + WALL, 'tex_obstacle');
+      const img = this.obstaclesGroup.create(o.x + o.w / 2 + WALL, o.y + o.h / 2 + WALL, obstacleTexKey);
       img.setDisplaySize(o.w, o.h);
       img.refreshBody();
       img.setDepth(1);
     }
+    this.rebuildObstacleRocks(inst);
 
     // Enemy sprites persist for the whole game; deactivate the previous
     // room's enemies and activate this room's.

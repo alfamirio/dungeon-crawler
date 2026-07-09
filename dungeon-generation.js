@@ -8,7 +8,7 @@
 function generateDungeon(){
   const rooms = new Map();
   const doors = new Map();
-  rooms.set(roomKey(0, 0), { x: 0, y: 0, type: 'start', dist: 0 });
+  rooms.set(roomKey(0, 0), { x: 0, y: 0, type: 'start', dist: 0, biome: choice(BIOMES) });
 
   const frontier = [{ x: 0, y: 0 }];
   let created = 1;
@@ -21,7 +21,7 @@ function generateDungeon(){
       const k = roomKey(nx, ny);
       if(rooms.has(k)) continue;
       if(rand() < 0.55) continue;
-      rooms.set(k, { x: nx, y: ny, type: 'normal', dist: (rooms.get(roomKey(from.x, from.y)).dist) + 1 });
+      rooms.set(k, { x: nx, y: ny, type: 'normal', dist: (rooms.get(roomKey(from.x, from.y)).dist) + 1, biome: choice(BIOMES) });
       doors.set(doorKey(from.x, from.y, nx, ny), { state: 'open' });
       frontier.push({ x: nx, y: ny });
       created++;
@@ -40,7 +40,7 @@ function generateDungeon(){
       const nx = last.x + 1, ny = last.y;
       const k = roomKey(nx, ny);
       if(!rooms.has(k)){
-        rooms.set(k, { x: nx, y: ny, type: 'normal', dist: i });
+        rooms.set(k, { x: nx, y: ny, type: 'normal', dist: i, biome: choice(BIOMES) });
         doors.set(doorKey(last.x, last.y, nx, ny), { state: 'open' });
       }
       last = { x: nx, y: ny };
@@ -96,7 +96,7 @@ function generateDungeon(){
       const nx = base.x + d.dx, ny = base.y + d.dy;
       const k = roomKey(nx, ny);
       if(rooms.has(k)) continue;
-      secretRoom = { x: nx, y: ny, type: 'secret', dist: base.dist + 1 };
+      secretRoom = { x: nx, y: ny, type: 'secret', dist: base.dist + 1, biome: choice(BIOMES) };
       rooms.set(k, secretRoom);
       doors.set(doorKey(base.x, base.y, nx, ny), { state: 'cracked' });
       break;
@@ -126,12 +126,30 @@ function makeObstacles(type){
         if(rectsOverlap(rect, { x: o.x - oc.spacing, y: o.y - oc.spacing, w: o.w + oc.spacing * 2, h: o.h + oc.spacing * 2 })){ overlaps = true; break; }
       }
       if(!overlaps){
-        obs.push({ x, y, w, h });
+        obs.push({ x, y, w, h, rocks: makeObstacleBorderRocks(rect) });
         placed = true;
       }
     }
   }
   return obs;
+}
+
+// Decorative (non-colliding) grey rock frame scattered along a square ring
+// around an obstacle's bounding box, drawn purely for visual weight —
+// reuses the same perimeterRectRocks() logic as pit borders below, just
+// applied to the obstacle's inflated bbox instead of a pit's edge.
+function makeObstacleBorderRocks(rect){
+  const oc = CONFIG.obstacles;
+  const margin = oc.rockMargin;
+  const outer = { x: rect.x - margin, y: rect.y - margin, w: rect.w + margin * 2, h: rect.h + margin * 2 };
+  const rocks = [];
+  const pushRock = (x, y, nx, ny) => {
+    const jitterOut = 1 + rand() * 4;
+    const angle = Math.atan2(ny, nx) + (rand() - 0.5) * 0.5;
+    rocks.push({ x: x + nx * jitterOut, y: y + ny * jitterOut, angle, scale: 0.55 + rand() * 0.4 });
+  };
+  perimeterRectRocks(outer, pushRock, oc.rockSpacing);
+  return rocks;
 }
 
 function pickSpawnClearOfPits(pits){

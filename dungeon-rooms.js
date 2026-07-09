@@ -106,6 +106,31 @@ Object.assign(DungeonScene.prototype, {
     // Floor retexture + boss-room tint toggle
     this.floorSprite.setTexture('tex_floor_' + biome.key);
     this.bossTintRect.setVisible(inst.meta.type === 'boss' && !inst.cleared);
+
+    // Per-biome fog/tint overlay: swap in this room's color, then fade it
+    // in so switching rooms doesn't hard-cut between hues.
+    const fog = parseRgba(biome.fog);
+    this.fogRect.setFillStyle(fog.color, fog.alpha);
+    this.fogRect.setAlpha(0);
+    if(this.fogTween) this.fogTween.stop();
+    this.fogTween = this.tweens.add({ targets: this.fogRect, alpha: 1, duration: 420, ease: 'Sine.easeOut' });
+  },
+
+  // ---------- Obstacle rock frame: decorative grey rocks ringing each obstacle ----------
+  // Purely visual (no physics), rebuilt every room entry same as decor/pits.
+  // Reuses the tex_pit_rock texture but always tinted a fixed grey (see
+  // COLORS.obstacleRock) rather than the current biome color, so it reads
+  // consistently as "this is an obstacle's footprint" everywhere.
+  rebuildObstacleRocks(inst){
+    for(const spr of this.obstacleRockSprites) spr.destroy();
+    this.obstacleRockSprites = [];
+    for(const o of inst.obstacles){
+      for(const r of o.rocks){
+        const img = this.add.image(r.x + WALL, r.y + WALL, 'tex_pit_rock')
+          .setRotation(r.angle).setScale(r.scale).setTint(COLORS.obstacleRock).setDepth(0.5);
+        this.obstacleRockSprites.push(img);
+      }
+    }
   },
 
   // ---------- Decor: corner "torches" (tweened) and floor motes (static) ----------
@@ -243,11 +268,9 @@ Object.assign(DungeonScene.prototype, {
 
   // ---------- Ambient atmosphere particles, reconfigured per biome on room entry ----------
   seedAmbient(biome){
-    const cfg = { tint: biome.particle };
-    if(biome.key === 'ice'){ Object.assign(cfg, { speedX: { min: -5, max: 5 }, speedY: { min: 20, max: 40 }, gravityY: 0 }); }
-    else if(biome.key === 'lava'){ Object.assign(cfg, { speedX: { min: -5, max: 5 }, speedY: { min: -40, max: -15 }, gravityY: 0 }); }
-    else if(biome.key === 'roots'){ Object.assign(cfg, { speedX: { min: -3, max: 3 }, speedY: { min: -16, max: -6 }, gravityY: 0 }); }
-    else { Object.assign(cfg, { speedX: { min: -6, max: 6 }, speedY: { min: -6, max: 6 }, gravityY: 0 }); }
+    // Per-biome motion/appearance lives on the biome data itself (config.js)
+    // so adding a biome doesn't require touching this function.
+    const cfg = Object.assign({ tint: biome.particle }, biome.ambient);
     this.ambientEmitter.setConfig(Object.assign({
       emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(0, 0, ROOM_W, ROOM_H) },
       scale: { min: 0.2, max: 0.5 },

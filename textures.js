@@ -205,8 +205,13 @@ function buildTextures(scene){
     g.fillCircle(15, 5, 4);
   });
 
-  // Obstacle (crate) texture, stretched per instance via setDisplaySize()
+  // Generic obstacle (crate) texture — kept as a fallback for any biome key
+  // that isn't in OBSTACLE_DRAWERS below. Stretched per instance via setDisplaySize().
+  // Carries the same contact-shadow + dark-outline treatment as the per-biome
+  // textures below so obstacles always read as solid/collidable.
   mk('tex_obstacle', 64, 64, g => {
+    g.fillStyle(0x000000, 0.34);
+    g.fillEllipse(32, 62, 30, 7);
     g.fillStyle(COLORS.obstacleEdge, 1);
     g.fillRoundedRect(0, 0, 64, 64, 6);
     g.fillStyle(hex('#2a2f3d'), 1);
@@ -215,7 +220,186 @@ function buildTextures(scene){
     g.fillRect(2, 2, 60, 4);
     g.fillStyle(0x000000, 0.25);
     g.fillRect(2, 58, 60, 4);
+    g.lineStyle(3, 0x0a0c12, 0.6);
+    g.strokeRoundedRect(0, 0, 64, 64, 6);
   });
+
+  // Per-biome obstacle art: tex_obstacle_<biome.key>, one texture per biome,
+  // following the same per-biome pattern as tex_floor_<biome.key> above.
+  // Colored from biome.obstacle (fill) / biome.obstacleEdge (rim/detail),
+  // and enterRoom() (dungeon-player.js) picks the room's current biome key
+  // when spawning each obstacle. Every design is kept as a roughly centered
+  // mass within the 64x64 canvas since obstacles get stretched non-uniformly
+  // via setDisplaySize() at placement time.
+  //
+  // Two treatments are shared by every biome, on top of its unique shape, so
+  // obstacles always read as solid/collidable at a glance and never get
+  // mistaken for decor (which is flat, shadowless, and has no dark outline):
+  //  - a soft contact shadow at the base, implying weight/grounding
+  //  - a crisp dark outline traced around the silhouette for hard edge contrast
+  //    against any floor color
+  const OBSTACLE_SHADOW_COLOR = 0x000000;
+  const OBSTACLE_OUTLINE_COLOR = 0x0a0c12;
+  const shadowBase = (g, cx, cy, rx, ry) => {
+    g.fillStyle(OBSTACLE_SHADOW_COLOR, 0.34);
+    g.fillEllipse(cx, cy, rx, ry);
+  };
+  const outlinePts = (g, pts, width = 3) => {
+    g.lineStyle(width, OBSTACLE_OUTLINE_COLOR, 0.6);
+    g.strokePoints(pts, true);
+  };
+
+  const OBSTACLE_DRAWERS = {
+    // Stone: chunky angular boulder/rubble chunk
+    stone(g, c, edge){
+      shadowBase(g, 32, 58, 26, 7);
+      const pts = [{x:8,y:42},{x:16,y:12},{x:36,y:4},{x:57,y:16},{x:60,y:40},{x:45,y:60},{x:19,y:58}];
+      g.fillStyle(edge, 1); g.fillPoints(pts, true);
+      const inner = pts.map(p => ({ x: 32 + (p.x - 32) * 0.86, y: 32 + (p.y - 32) * 0.86 }));
+      g.fillStyle(c, 1); g.fillPoints(inner, true);
+      g.fillStyle(0xffffff, 0.08); g.fillTriangle(17, 15, 36, 9, 27, 27);
+      g.fillStyle(0x000000, 0.2); g.fillTriangle(45, 55, 20, 52, 32, 40);
+      outlinePts(g, pts);
+    },
+    // Roots: tangled root ball with visible vein lines
+    roots(g, c, edge){
+      shadowBase(g, 32, 60, 24, 7);
+      g.fillStyle(edge, 1); g.fillCircle(32, 36, 26);
+      g.fillStyle(c, 1); g.fillCircle(32, 36, 22);
+      g.lineStyle(3, edge, 0.85);
+      g.beginPath(); g.moveTo(10, 30); g.lineTo(24, 20); g.lineTo(30, 38); g.lineTo(50, 22); g.strokePath();
+      g.beginPath(); g.moveTo(16, 50); g.lineTo(32, 42); g.lineTo(46, 52); g.strokePath();
+      g.beginPath(); g.moveTo(32, 14); g.lineTo(30, 38); g.lineTo(38, 58); g.strokePath();
+      g.fillStyle(0x000000, 0.15); g.fillCircle(30, 44, 9);
+      g.lineStyle(3, OBSTACLE_OUTLINE_COLOR, 0.6); g.strokeCircle(32, 36, 26);
+    },
+    // Ice: faceted crystalline block
+    ice(g, c, edge){
+      shadowBase(g, 32, 58, 22, 6);
+      const pts = [{x:32,y:4},{x:56,y:22},{x:50,y:56},{x:14,y:56},{x:8,y:22}];
+      g.fillStyle(edge, 1); g.fillPoints(pts, true);
+      const inner = pts.map(p => ({ x: 32 + (p.x - 32) * 0.85, y: 32 + (p.y - 32) * 0.85 }));
+      g.fillStyle(c, 1); g.fillPoints(inner, true);
+      g.lineStyle(1.5, 0xffffff, 0.5);
+      g.lineBetween(32, 10, 32, 52); g.lineBetween(14, 24, 50, 40); g.lineBetween(50, 24, 14, 40);
+      g.fillStyle(0xffffff, 0.25); g.fillTriangle(32, 10, 44, 26, 32, 32);
+      outlinePts(g, pts);
+    },
+    // Lava: blackened basalt rock with glowing cracks
+    lava(g, c, edge){
+      shadowBase(g, 32, 59, 25, 7);
+      const pts = [{x:8,y:40},{x:18,y:10},{x:38,y:6},{x:58,y:20},{x:58,y:44},{x:40,y:60},{x:16,y:56}];
+      g.fillStyle(edge, 1); g.fillPoints(pts, true);
+      const inner = pts.map(p => ({ x: 32 + (p.x - 32) * 0.86, y: 32 + (p.y - 32) * 0.86 }));
+      g.fillStyle(0x1a1210, 1); g.fillPoints(inner, true);
+      g.lineStyle(3, c, 0.9);
+      g.beginPath(); g.moveTo(16, 44); g.lineTo(28, 32); g.lineTo(24, 20); g.strokePath();
+      g.beginPath(); g.moveTo(28, 32); g.lineTo(44, 38); g.lineTo(48, 52); g.strokePath();
+      g.fillStyle(c, 0.5); g.fillCircle(28, 32, 3);
+      outlinePts(g, pts);
+    },
+    // Desert: ribbed barrel cactus with spines
+    desert(g, c, edge){
+      shadowBase(g, 32, 61, 20, 6);
+      g.fillStyle(edge, 1); g.fillRoundedRect(12, 10, 40, 50, 16);
+      g.fillStyle(c, 1); g.fillRoundedRect(15, 13, 34, 44, 14);
+      g.lineStyle(1.5, edge, 0.6);
+      for(const x of [22, 32, 42]) g.lineBetween(x, 15, x, 55);
+      g.fillStyle(0xffffff, 0.5);
+      for(let i = 0; i < 10; i++){ const x = 18 + (i % 5) * 7, y = 18 + Math.floor(i / 5) * 24; g.fillCircle(x, y, 1); }
+      g.lineStyle(3, OBSTACLE_OUTLINE_COLOR, 0.6); g.strokeRoundedRect(12, 10, 40, 50, 16);
+    },
+    // Cave: stalagmite spike rising from a rocky base
+    cave(g, c, edge){
+      shadowBase(g, 32, 59, 25, 6);
+      g.fillStyle(edge, 1); g.fillTriangle(32, 4, 54, 60, 10, 60);
+      g.fillStyle(c, 1); g.fillTriangle(32, 10, 46, 56, 18, 56);
+      g.fillStyle(0xffffff, 0.06); g.fillTriangle(32, 10, 38, 40, 26, 40);
+      g.lineStyle(3, OBSTACLE_OUTLINE_COLOR, 0.6); g.strokeTriangle(32, 4, 54, 60, 10, 60);
+    },
+    // Graveyard: rounded-top tombstone slab
+    graveyard(g, c, edge){
+      shadowBase(g, 32, 62, 24, 6);
+      g.fillStyle(edge, 1);
+      g.fillRoundedRect(10, 14, 44, 46, { tl: 20, tr: 20, bl: 2, br: 2 });
+      g.fillStyle(c, 1);
+      g.fillRoundedRect(13, 17, 38, 40, { tl: 17, tr: 17, bl: 1, br: 1 });
+      g.lineStyle(2, edge, 0.5);
+      g.lineBetween(24, 30, 40, 30); g.lineBetween(32, 30, 32, 46);
+      g.fillStyle(0x000000, 0.18); g.fillRect(13, 50, 38, 7);
+      g.lineStyle(3, OBSTACLE_OUTLINE_COLOR, 0.6);
+      g.strokeRoundedRect(10, 14, 44, 46, { tl: 20, tr: 20, bl: 2, br: 2 });
+    },
+    // Alien: cluster of angular crystal shards
+    alien(g, c, edge){
+      shadowBase(g, 32, 60, 26, 7);
+      const shard = (cx, cy, s, rot) => {
+        const pts = [{x:0,y:-s},{x:s*0.55,y:s*0.3},{x:0,y:s*0.7},{x:-s*0.55,y:s*0.3}]
+          .map(p => ({ x: cx + p.x * Math.cos(rot) - p.y * Math.sin(rot), y: cy + p.x * Math.sin(rot) + p.y * Math.cos(rot) }));
+        g.fillStyle(edge, 1); g.fillPoints(pts, true);
+        const inner = pts.map(p => ({ x: cx + (p.x - cx) * 0.8, y: cy + (p.y - cy) * 0.8 }));
+        g.fillStyle(c, 1); g.fillPoints(inner, true);
+        g.lineStyle(2, OBSTACLE_OUTLINE_COLOR, 0.6); g.strokePoints(pts, true);
+      };
+      shard(24, 38, 22, -0.2); shard(42, 30, 18, 0.35); shard(34, 50, 14, 0.1);
+      g.fillStyle(0xffffff, 0.2); g.fillCircle(24, 30, 3);
+    },
+    // Island: driftwood/coral branching cluster
+    island(g, c, edge){
+      shadowBase(g, 30, 60, 20, 6);
+      g.lineStyle(13, OBSTACLE_OUTLINE_COLOR, 0.5);
+      g.beginPath(); g.moveTo(20, 58); g.lineTo(26, 26); g.lineTo(16, 8); g.strokePath();
+      g.beginPath(); g.moveTo(26, 26); g.lineTo(42, 14); g.strokePath();
+      g.beginPath(); g.moveTo(26, 40); g.lineTo(46, 44); g.strokePath();
+      g.lineStyle(9, edge, 1);
+      g.beginPath(); g.moveTo(20, 58); g.lineTo(26, 26); g.lineTo(16, 8); g.strokePath();
+      g.beginPath(); g.moveTo(26, 26); g.lineTo(42, 14); g.strokePath();
+      g.beginPath(); g.moveTo(26, 40); g.lineTo(46, 44); g.strokePath();
+      g.lineStyle(6, c, 1);
+      g.beginPath(); g.moveTo(20, 58); g.lineTo(26, 26); g.lineTo(16, 8); g.strokePath();
+      g.beginPath(); g.moveTo(26, 26); g.lineTo(42, 14); g.strokePath();
+      g.beginPath(); g.moveTo(26, 40); g.lineTo(46, 44); g.strokePath();
+      g.fillStyle(c, 1); g.fillCircle(16, 8, 4); g.fillCircle(42, 14, 4); g.fillCircle(46, 44, 4);
+    },
+    // Temple: cracked fluted stone pillar
+    temple(g, c, edge){
+      shadowBase(g, 32, 61, 20, 6);
+      g.fillStyle(edge, 1); g.fillRoundedRect(14, 4, 36, 56, 4);
+      g.fillStyle(c, 1); g.fillRoundedRect(17, 7, 30, 50, 3);
+      g.lineStyle(1.5, edge, 0.5);
+      for(const x of [23, 32, 41]) g.lineBetween(x, 8, x, 56);
+      g.lineStyle(2, 0x000000, 0.35);
+      g.beginPath(); g.moveTo(20, 20); g.lineTo(30, 34); g.lineTo(24, 48); g.strokePath();
+      g.fillStyle(edge, 1); g.fillRect(14, 4, 36, 6); g.fillRect(14, 54, 36, 6);
+      g.lineStyle(3, OBSTACLE_OUTLINE_COLOR, 0.6); g.strokeRoundedRect(14, 4, 36, 56, 4);
+    },
+    // Neon: glowing barricade block with a lit stripe
+    neon(g, c, edge){
+      shadowBase(g, 32, 57, 30, 8);
+      g.fillStyle(edge, 1); g.fillRoundedRect(4, 10, 56, 44, 6);
+      g.fillStyle(0x15131f, 1); g.fillRoundedRect(7, 13, 50, 38, 5);
+      g.fillStyle(c, 1); g.fillRoundedRect(10, 28, 44, 8, 2);
+      g.fillStyle(0xffffff, 0.3); g.fillRoundedRect(10, 28, 44, 3, 2);
+      g.lineStyle(3, OBSTACLE_OUTLINE_COLOR, 0.6); g.strokeRoundedRect(4, 10, 56, 44, 6);
+    },
+    // Factory: riveted metal crate with a pipe fitting
+    factory(g, c, edge){
+      shadowBase(g, 32, 62, 30, 7);
+      g.fillStyle(edge, 1); g.fillRoundedRect(4, 4, 56, 56, 4);
+      g.fillStyle(c, 1); g.fillRoundedRect(7, 7, 50, 50, 3);
+      g.fillStyle(0xffffff, 0.08); g.fillRect(7, 7, 50, 5);
+      g.fillStyle(0x000000, 0.25); g.fillRect(7, 52, 50, 5);
+      g.fillStyle(edge, 1);
+      g.fillCircle(11, 11, 2); g.fillCircle(53, 11, 2); g.fillCircle(11, 53, 2); g.fillCircle(53, 53, 2);
+      g.fillStyle(0x000000, 0.3); g.fillRoundedRect(26, 20, 12, 24, 3);
+      g.lineStyle(3, OBSTACLE_OUTLINE_COLOR, 0.6); g.strokeRoundedRect(4, 4, 56, 56, 4);
+    }
+  };
+
+  for(const biome of BIOMES){
+    const drawer = OBSTACLE_DRAWERS[biome.key] || OBSTACLE_DRAWERS.stone;
+    mk('tex_obstacle_' + biome.key, 64, 64, g => drawer(g, biome.obstacle, biome.obstacleEdge));
+  }
 
   // Soft radial glow blob, tinted per use (chest glow, corner torch, godmode ring)
   mk('tex_glow', 64, 64, g => {
