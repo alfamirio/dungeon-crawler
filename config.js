@@ -15,8 +15,9 @@ const CONFIG = {
     roomCount: 13
   },
   player: {
-    width: 40,
-    height: 40,
+    width: 52,
+    height: 52,
+    radius: 24,
     speed: 240,
     startHp: 6,
     maxHp: 6,
@@ -29,11 +30,11 @@ const CONFIG = {
     happyEyeDuration: 0.6,
     shieldSpeedMultiplier: 0.55,
     shieldBlockDot: 0.3,
-    shieldOffset: 29,
+    shieldOffset: 36,
     dashSpeed: 520,
     dashDuration: 0.18,
     dashCooldown: 0.6,
-    swordPivotOffset: 11,
+    swordPivotOffset: 15,
     swordSwingStartDeg: 45,
     swordSwingEndDeg: -45,
     invulnBlinkIntervalMs: 83 // blink toggle rate for invulnerability
@@ -58,13 +59,13 @@ const CONFIG = {
     maxCount: 6,
     countPerDist: 2,
     turretChance: 0.35,
-    spawnMargin: 80,
+    spawnMargin: 90,
     bossEscortsMin: 1,
     bossEscortsMax: 2,
     bossEscortTurretChance: 0.4,
-    chaser: { hp: 2, radius: 18, speedBase: 80, speedPerDist: 5, contactDamage: 1 },
-    turret: { hp: 2, radius: 30, shootCooldown: 1.5, contactDamage: 1 },
-    boss:   { hp: 10, radius: 34, speed: 95, contactDamage: 2 },
+    chaser: { hp: 2, radius: 24, speedBase: 80, speedPerDist: 5, contactDamage: 1 },
+    turret: { hp: 2, radius: 38, shootCooldown: 1.5, contactDamage: 1 },
+    boss:   { hp: 10, radius: 44, speed: 95, contactDamage: 2 },
     hpBar: { width: 60, height: 6, xOffset: -30, yMargin: 16 } // enemy hp-bar geometry
   },
   obstacles: {

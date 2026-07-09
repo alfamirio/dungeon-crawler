@@ -79,7 +79,7 @@ class DungeonScene extends Phaser.Scene {
     this.playerSprite = new PlayerSprite(this, WALL, WALL, 'tex_player');
     this.add.existing(this.playerSprite);
     this.physics.add.existing(this.playerSprite);
-    this.playerSprite.setCircle(18, this.playerSprite.width / 2 - 18, this.playerSprite.height / 2 - 18);
+    this.playerSprite.setCircle(CONFIG.player.radius, this.playerSprite.width / 2 - CONFIG.player.radius, this.playerSprite.height / 2 - CONFIG.player.radius);
     this.playerSprite.setDepth(4);
     this.playerSprite.body.setAllowGravity(false);
 
@@ -103,8 +103,13 @@ class DungeonScene extends Phaser.Scene {
 
     this.shieldSprite = this.add.image(WALL, WALL, 'tex_shield').setDepth(5).setVisible(false);
 
+    // Small wagging tail, trailing just behind the player (see updateTailVisual()).
+    this.tailSprite = this.add.image(WALL, WALL, 'tex_tail_poof').setTint(COLORS.playerTail).setDepth(3.9);
+    this.tailWag = { angle: 0 };
+    this.tweens.add({ targets: this.tailWag, angle: 0.4, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+
     // Invincibility ring, pulsed via a scale tween in setGodmodeVisual()
-    this.godRingSprite = this.add.circle(WALL, WALL, 30, 0xffe14d, 0)
+    this.godRingSprite = this.add.circle(WALL, WALL, CONFIG.player.radius + 16, 0xffe14d, 0)
       .setStrokeStyle(4, 0xffe14d, 1)
       .setDepth(4.5)
       .setVisible(false);
@@ -154,6 +159,32 @@ class DungeonScene extends Phaser.Scene {
       this.newGame();
     });
     this.scene.launch('UI');
+
+    this.scheduleBlink();
+  }
+
+  // ---- Cute idle bits: periodic blink + the tail trailing behind the player ----
+  scheduleBlink(){
+    this.blinkTimer = this.time.delayedCall(1800 + Math.random() * 3200, () => {
+      if(!this.gameOver && !this.gameWon && !this.playerSprite.falling &&
+         !this.hurtFlashTimer && !this.happyFlashTimer &&
+         this.playerSprite.texture.key === 'tex_player'){
+        this.playerSprite.setTexture('tex_player_blink');
+        this.time.delayedCall(110, () => {
+          if(this.playerSprite.active && this.playerSprite.texture.key === 'tex_player_blink') this.playerSprite.setTexture('tex_player');
+        });
+      }
+      this.scheduleBlink();
+    });
+  }
+
+  updateTailVisual(){
+    const p = this.playerSprite;
+    const backAngle = Math.atan2(p.dir.y, p.dir.x) + Math.PI;
+    const wag = this.tailWag ? this.tailWag.angle : 0;
+    const offset = 26;
+    this.tailSprite.setPosition(p.x + Math.cos(backAngle) * offset, p.y + Math.sin(backAngle) * offset);
+    this.tailSprite.setRotation(backAngle + wag);
   }
 
   newGame(){
@@ -201,6 +232,9 @@ class DungeonScene extends Phaser.Scene {
     this.playerSprite.clearTint();
     this.playerSprite.setAlpha(1);
     this.playerSprite.setScale(1);
+    this.playerSprite.setTexture('tex_player');
+    this.tailSprite.setAlpha(1);
+    this.tailSprite.setScale(1);
     this.setGodmodeVisual(false);
     if(this.invulnTween){ this.invulnTween.stop(); this.invulnTween = null; }
     if(this.invulnBlinkEnd){ this.invulnBlinkEnd.remove(); this.invulnBlinkEnd = null; }
@@ -247,6 +281,7 @@ class DungeonScene extends Phaser.Scene {
     if(this.hitStop > 0){ this.hitStop -= dt; p.setVelocity(0, 0); return; }
 
     this.handleMovement(dt);
+    this.updateTailVisual();
     this.handleSword(dt);
     this.handleShield();
     this.handleBombs();

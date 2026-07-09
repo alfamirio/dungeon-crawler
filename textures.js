@@ -30,36 +30,137 @@ function buildTextures(scene){
     });
   }
 
-  // Player texture: rounded blob with a facing notch (sprite rotates to face movement)
-  mk('tex_player', 44, 44, g => {
+  // Player texture: rounded blob with a facing notch (sprite rotates to face
+  // movement), big sparkly forward-looking eyes, soft blush, and tiny brows
+  // for extra expressiveness/cuteness.
+  mk('tex_player', 58, 58, g => {
     g.fillStyle(COLORS.player, 1);
-    g.fillCircle(22, 22, 19);
+    g.fillCircle(29, 29, 25);
     g.fillStyle(0xffffff, 0.28);
-    g.fillEllipse(16, 15, 14, 9);
+    g.fillEllipse(21, 20, 18, 12);
     g.fillStyle(COLORS.playerTail, 1);
-    g.fillTriangle(36, 22, 21, 13, 21, 31);
+    g.fillTriangle(47, 29, 28, 17, 28, 41);
+    // Blush drawn before the eyes so it sits just underneath them
+    g.fillStyle(0xff9aa8, 0.35);
+    g.fillEllipse(22, 16.5, 8, 5);
+    g.fillEllipse(22, 41.5, 8, 5);
+    // Tiny brows for a touch of expression
+    g.lineStyle(2, 0x1a1d24, 0.55);
+    g.beginPath(); g.arc(33, 13, 5, Phaser.Math.DegToRad(200), Phaser.Math.DegToRad(340)); g.strokePath();
+    g.beginPath(); g.arc(33, 45, 5, Phaser.Math.DegToRad(20), Phaser.Math.DegToRad(160), true); g.strokePath();
+    // Eyes drawn last so they sit on top of the tail/notch — bigger + extra sparkle
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(33, 21, 7);
+    g.fillCircle(33, 37, 7);
+    g.fillStyle(0x1a1d24, 1);
+    g.fillCircle(35.5, 21, 4);
+    g.fillCircle(35.5, 37, 4);
+    g.fillStyle(0xffffff, 0.95);
+    g.fillCircle(37.5, 19, 1.4);
+    g.fillCircle(37.5, 35, 1.4);
+    g.fillStyle(0xffffff, 0.6);
+    g.fillCircle(34, 23.5, 0.9);
+    g.fillCircle(34, 39.5, 0.9);
   });
 
-  mk('tex_chaser', 40, 40, g => {
+  // Blink variant of the player texture — same body/blush/brows, eyes
+  // replaced with closed happy-arc lids. Swapped in briefly for a blink.
+  mk('tex_player_blink', 58, 58, g => {
+    g.fillStyle(COLORS.player, 1);
+    g.fillCircle(29, 29, 25);
+    g.fillStyle(0xffffff, 0.28);
+    g.fillEllipse(21, 20, 18, 12);
+    g.fillStyle(COLORS.playerTail, 1);
+    g.fillTriangle(47, 29, 28, 17, 28, 41);
+    g.fillStyle(0xff9aa8, 0.35);
+    g.fillEllipse(22, 16.5, 8, 5);
+    g.fillEllipse(22, 41.5, 8, 5);
+    g.lineStyle(2, 0x1a1d24, 0.55);
+    g.beginPath(); g.arc(33, 13, 5, Phaser.Math.DegToRad(200), Phaser.Math.DegToRad(340)); g.strokePath();
+    g.beginPath(); g.arc(33, 45, 5, Phaser.Math.DegToRad(20), Phaser.Math.DegToRad(160), true); g.strokePath();
+    g.lineStyle(2.4, 0x1a1d24, 1);
+    g.beginPath(); g.arc(33, 21, 6, Phaser.Math.DegToRad(20), Phaser.Math.DegToRad(160), true); g.strokePath();
+    g.beginPath(); g.arc(33, 37, 6, Phaser.Math.DegToRad(20), Phaser.Math.DegToRad(160), true); g.strokePath();
+  });
+
+  // Small fluffy tail "poof" — a cluster of soft circles, drawn white and
+  // tinted per-instance (matches the tex_pit_rock/tex_decor_corner pattern).
+  // Trails behind the player, independently wagged for a cute idle motion.
+  mk('tex_tail_poof', 26, 20, g => {
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(6, 10, 8);
+    g.fillCircle(15, 7, 6.5);
+    g.fillCircle(21, 11, 5);
+    g.fillStyle(0xffffff, 0.85);
+    g.fillCircle(21, 11, 3);
+  });
+
+  // Pain variant — shown briefly on damagePlayer(). Eyes squeeze into a
+  // scrunched "><" wince and brows knit sharply toward the center.
+  mk('tex_player_pain', 58, 58, g => {
+    g.fillStyle(COLORS.player, 1);
+    g.fillCircle(29, 29, 25);
+    g.fillStyle(0xffffff, 0.28);
+    g.fillEllipse(21, 20, 18, 12);
+    g.fillStyle(COLORS.playerTail, 1);
+    g.fillTriangle(47, 29, 28, 17, 28, 41);
+    g.fillStyle(0xff9aa8, 0.35);
+    g.fillEllipse(22, 16.5, 8, 5);
+    g.fillEllipse(22, 41.5, 8, 5);
+    // Furrowed brows, angled sharply down toward the center of the face
+    g.lineStyle(2.4, 0x1a1d24, 0.7);
+    g.lineBetween(28, 15.5, 38, 12.5);
+    g.lineBetween(28, 42.5, 38, 45.5);
+    // Scrunched "><" eyes
+    g.lineStyle(2.6, 0x1a1d24, 1);
+    g.lineBetween(29, 17, 37, 21); g.lineBetween(29, 25, 37, 21);
+    g.lineBetween(29, 33, 37, 37); g.lineBetween(29, 41, 37, 37);
+  });
+
+  // Success/happy variant — shown briefly on chest/key pickup. Eyes curve
+  // into cheerful upward arcs, brows relax and lift, blush brightens.
+  mk('tex_player_happy', 58, 58, g => {
+    g.fillStyle(COLORS.player, 1);
+    g.fillCircle(29, 29, 25);
+    g.fillStyle(0xffffff, 0.28);
+    g.fillEllipse(21, 20, 18, 12);
+    g.fillStyle(COLORS.playerTail, 1);
+    g.fillTriangle(47, 29, 28, 17, 28, 41);
+    g.fillStyle(0xff9aa8, 0.5);
+    g.fillEllipse(22, 16.5, 9, 5.5);
+    g.fillEllipse(22, 41.5, 9, 5.5);
+    g.lineStyle(2, 0x1a1d24, 0.5);
+    g.beginPath(); g.arc(33, 11.5, 5, Phaser.Math.DegToRad(200), Phaser.Math.DegToRad(340)); g.strokePath();
+    g.beginPath(); g.arc(33, 46.5, 5, Phaser.Math.DegToRad(20), Phaser.Math.DegToRad(160), true); g.strokePath();
+    // Cheerful upward-curving "^" eyes
+    g.lineStyle(3, 0x1a1d24, 1);
+    g.beginPath(); g.arc(33, 25, 7, Phaser.Math.DegToRad(200), Phaser.Math.DegToRad(340), true); g.strokePath();
+    g.beginPath(); g.arc(33, 33, 7, Phaser.Math.DegToRad(200), Phaser.Math.DegToRad(340), true); g.strokePath();
+    // Small satisfied smile
+    g.lineStyle(2, 0x1a1d24, 0.6);
+    g.beginPath(); g.arc(38, 29, 5, Phaser.Math.DegToRad(60), Phaser.Math.DegToRad(120)); g.strokePath();
+  });
+
+  mk('tex_chaser', 54, 54, g => {
     g.fillStyle(COLORS.chaser, 1);
-    g.fillCircle(20, 20, 18);
+    g.fillCircle(27, 27, 24);
     g.fillStyle(0x000000, 0.18);
-    g.fillCircle(20, 24, 18 * 0.7);
+    g.fillCircle(27, 31, 24 * 0.7);
   });
 
-  mk('tex_turret', 64, 48, g => {
+  mk('tex_turret', 82, 62, g => {
     g.fillStyle(COLORS.turret, 1);
-    g.fillEllipse(32, 24, 56, 34);
+    g.fillEllipse(40, 30, 71, 43);
     g.fillStyle(0xffffff, 0.22);
-    g.fillEllipse(22, 15, 18, 10);
+    g.fillEllipse(28, 19, 23, 13);
   });
 
-  mk('tex_boss', 76, 76, g => {
+  mk('tex_boss', 98, 98, g => {
     g.fillStyle(COLORS.chaser, 1);
     const pts = [];
     for(let i = 0; i < 6; i++){
       const a = Math.PI / 3 * i - Math.PI / 2;
-      pts.push({ x: 38 + Math.cos(a) * 34, y: 38 + Math.sin(a) * 34 });
+      pts.push({ x: 49 + Math.cos(a) * 44, y: 49 + Math.sin(a) * 44 });
     }
     g.fillPoints(pts, true);
   });

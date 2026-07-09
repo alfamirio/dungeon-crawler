@@ -91,20 +91,24 @@ Object.assign(DungeonScene.prototype, {
   triggerHurtFlash(){
     if(this.happyFlashTimer){ this.happyFlashTimer.remove(); this.happyFlashTimer = null; }
     this.playerSprite.setTint(COLORS.hurtTint);
+    this.playerSprite.setTexture('tex_player_pain');
     if(this.hurtFlashTimer) this.hurtFlashTimer.remove();
     this.hurtFlashTimer = this.time.delayedCall(CONFIG.player.hurtEyeDuration * 1000, () => {
       this.hurtFlashTimer = null;
       this.playerSprite.clearTint();
+      if(this.playerSprite.active) this.playerSprite.setTexture('tex_player');
     });
   },
 
   triggerHappyFlash(){
     if(this.hurtFlashTimer) return; // getting hit takes visual priority
     this.playerSprite.setTint(COLORS.happyTint);
+    this.playerSprite.setTexture('tex_player_happy');
     if(this.happyFlashTimer) this.happyFlashTimer.remove();
     this.happyFlashTimer = this.time.delayedCall(CONFIG.player.happyEyeDuration * 1000, () => {
       this.happyFlashTimer = null;
       this.playerSprite.clearTint();
+      if(this.playerSprite.active) this.playerSprite.setTexture('tex_player');
     });
   },
 
@@ -134,7 +138,7 @@ Object.assign(DungeonScene.prototype, {
     SFX.pitFall();
     this.cameras.main.shake(220, 0.012);
     this.tweens.add({
-      targets: p, scale: 0, alpha: 0, duration: CONFIG.pits.playerFallDuration * 1000, ease: 'Cubic.easeIn',
+      targets: [p, this.tailSprite], scale: 0, alpha: 0, duration: CONFIG.pits.playerFallDuration * 1000, ease: 'Cubic.easeIn',
       onComplete: () => {
         p.hp = 0;
         this.gameOver = true;
