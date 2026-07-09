@@ -148,6 +148,19 @@ Object.assign(DungeonScene.prototype, {
       this.chestSprite.setDepth(2);
       this.tweens.add({ targets: [this.chestSprite, this.chestGlow], y: '+=8', duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       this.tweens.add({ targets: this.chestGlow, alpha: { from: 0.3, to: 0.55 }, scale: { from: 0.6, to: 0.85 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    } else if((meta.type === 'normal' || meta.type === 'boss') && inst.cleared && !inst.chestTaken){
+      // Bonus reward chest: appears once a combat room's enemies are all defeated
+      const cx = ROOM_W / 2 + WALL, cy = ROOM_H / 2 + WALL;
+      this.chestGlow = this.add.image(cx, cy, 'tex_glow').setTint(COLORS.chestReward).setAlpha(0.4).setScale(0.7).setDepth(1.5);
+      this.chestSprite = this.chestGroup.create(cx, cy, 'tex_chest_reward');
+      const r = CONFIG.rooms.chestPickupRadius;
+      this.chestSprite.setCircle(r, this.chestSprite.width / 2 - r, this.chestSprite.height / 2 - r);
+      this.chestSprite.body.setAllowGravity(false);
+      this.chestSprite.body.setImmovable(true);
+      this.chestSprite.chestType = 'reward';
+      this.chestSprite.setDepth(2);
+      this.tweens.add({ targets: [this.chestSprite, this.chestGlow], y: '+=8', duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      this.tweens.add({ targets: this.chestGlow, alpha: { from: 0.3, to: 0.55 }, scale: { from: 0.6, to: 0.85 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     }
   },
 

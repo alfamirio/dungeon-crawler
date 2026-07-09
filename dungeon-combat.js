@@ -179,6 +179,7 @@ Object.assign(DungeonScene.prototype, {
         if(!roomInst.cleared && roomInst.enemies.length === 0){
           roomInst.cleared = true;
           this.rebuildWalls();
+          this.rebuildChest(roomInst);
           if(roomInst.meta.type === 'boss'){
             this.gameWon = true;
             this.showMessage('Dungeon complete!', 'press retry for another seed');
@@ -335,6 +336,12 @@ Object.assign(DungeonScene.prototype, {
     } else if(type === 'secret'){
       p.hp = Phaser.Math.Clamp(p.hp + CONFIG.items.secretHealAmount, 0, p.maxHp);
       SFX.chestPickup();
+    } else if(type === 'reward'){
+      const bonusHp = Math.round(p.maxHp * CONFIG.items.clearChestHpPercent);
+      const bonusBombs = Math.round(p.maxBombs * CONFIG.items.clearChestBombPercent);
+      p.hp = Phaser.Math.Clamp(p.hp + bonusHp, 0, p.maxHp);
+      p.bombs = Phaser.Math.Clamp(p.bombs + bonusBombs, 0, p.maxBombs);
+      SFX.chestPickup();
     }
     this.burst(chestSprite.x - WALL, chestSprite.y - WALL, COLORS.chest, 24);
     chestSprite.destroy();
@@ -443,6 +450,7 @@ Object.assign(DungeonScene.prototype, {
     if(!roomInst.cleared && roomInst.enemies.length === 0){
       roomInst.cleared = true;
       this.rebuildWalls(); // sealed -> open door(s) need real gaps now
+      this.rebuildChest(roomInst);
       if(roomInst.meta.type === 'boss'){
         this.gameWon = true;
         this.showMessage('Dungeon complete!', 'press retry for another seed');

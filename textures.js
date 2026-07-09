@@ -238,6 +238,36 @@ function buildTextures(scene){
     g.lineStyle(2, 0x000000, 0.33);
     g.strokePoints([{ x: 20, y: 2 }, { x: 38, y: 20 }, { x: 20, y: 38 }, { x: 2, y: 20 }], true);
   });
+  // Post-clear reward chest: an actual chest silhouette (wood body + lid +
+  // metal band/lock), tinted with COLORS.chestReward on the hardware so it
+  // still reads as distinct from the gold item-room / green secret chests.
+  mk('tex_chest_reward', 40, 40, g => {
+    // Lid
+    g.fillStyle(0x8a5a34, 1);
+    g.fillRoundedRect(3, 4, 34, 14, { tl: 7, tr: 7, bl: 0, br: 0 });
+    // Body
+    g.fillStyle(0x6b4423, 1);
+    g.fillRoundedRect(3, 16, 34, 21, { tl: 0, tr: 0, bl: 6, br: 6 });
+    // Wood grain shading
+    g.fillStyle(0x000000, 0.12);
+    g.fillRect(3, 24, 34, 3);
+    // Metal band across the seam
+    g.fillStyle(COLORS.chestReward, 1);
+    g.fillRect(3, 15, 34, 4);
+    // Corner rivets
+    g.fillStyle(COLORS.chestReward, 0.9);
+    g.fillCircle(7, 9, 1.6); g.fillCircle(33, 9, 1.6);
+    g.fillCircle(7, 32, 1.6); g.fillCircle(33, 32, 1.6);
+    // Lock plate + keyhole
+    g.fillStyle(COLORS.chestReward, 1);
+    g.fillRoundedRect(16.5, 13, 7, 9, 2);
+    g.fillStyle(0x1a1d24, 0.8);
+    g.fillCircle(20, 17, 1.6);
+    g.fillRect(19.2, 17, 1.6, 3);
+    // Outline
+    g.lineStyle(2, 0x000000, 0.3);
+    g.strokeRoundedRect(3, 4, 34, 33, { tl: 7, tr: 7, bl: 6, br: 6 });
+  });
 
   // Small rock/brick chunk scattered around pit edges — tinted per biome via setTint().
   mk('tex_pit_rock', 14, 10, g => {

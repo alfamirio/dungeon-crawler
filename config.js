@@ -22,7 +22,7 @@ const CONFIG = {
     startHp: 6,
     maxHp: 6,
     startBombs: 3,
-    maxBombs: 6,
+    maxBombs: 20,
     invulnDuration: 1.1,
     attackCooldown: 0.25,
     attackDuration: 0.12,
@@ -96,7 +96,9 @@ const CONFIG = {
     crackedWallProximity: 60
   },
   items: {
-    maxBombsCap: 8, bombRefillAmount: 2, maxBombsIncrement: 1, secretHealAmount: 2
+    maxBombsCap: 20, bombRefillAmount: 2, maxBombsIncrement: 1, secretHealAmount: 2,
+    // Reward chest that appears after a normal/boss room is fully cleared of enemies
+    clearChestHpPercent: 0.5, clearChestBombPercent: 0.5
   },
   pits: {
     roomChance: 0.55, // chance a normal/boss/key room gets pit hazards
@@ -133,7 +135,7 @@ const COLORS = {
   chaser: hex('#e2555a'), turret: hex('#caa23a'), projectile: hex('#ffdd57'),
   bomb: hex('#111318'), bombFuse: hex('#ffb020'),
   hookChain: hex('#b7c0d1'), hookHead: hex('#f4d35e'),
-  chest: hex('#f4d35e'), chestSecret: hex('#7fd1a8'),
+  chest: hex('#f4d35e'), chestSecret: hex('#7fd1a8'), chestReward: hex('#8ec6ff'),
   obstacleEdge: hex('#3a4256'), godmode: hex('#f4d35e'),
   // Flash tints and shield-block spark color
   hurtTint: hex('#ff6666'), happyTint: hex('#bdf5c9'), enemyHitTint: hex('#ffffff'),
