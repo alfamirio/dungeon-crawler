@@ -153,6 +153,44 @@ Object.assign(DungeonScene.prototype, {
     b.destroy();
   },
 
+  // ---- Pit hazard: overlap callback for pitZonesGroup ----
+  onEnemyPitOverlap(enemySprite, zone){
+    const en = enemySprite;
+    if(en._falling) return;
+    if(!pointInPit(en.rx, en.ry, zone.pitRef)) return; // inside the zone's bbox but not the actual hole
+    this.triggerEnemyFall(en);
+  },
+
+  // Instant-death fall for an enemy: freeze it, shrink/fade, then remove it
+  // from the room (does not count toward the "enemies defeated" stat).
+  triggerEnemyFall(en){
+    en._falling = true;
+    en.body.enable = false;
+    if(en.shootTimer) en.shootTimer.paused = true;
+    this.burst(en.rx, en.ry, COLORS.pitFill, 10);
+    SFX.pitFall();
+    this.tweens.add({
+      targets: en, scale: 0, alpha: 0, duration: CONFIG.pits.enemyFallDuration * 1000, ease: 'Cubic.easeIn',
+      onComplete: () => {
+        const roomInst = this.curInst();
+        const idx = roomInst.enemies.indexOf(en);
+        if(idx >= 0) roomInst.enemies.splice(idx, 1);
+        this.destroyEnemySprite(en, { burst: false });
+        if(!roomInst.cleared && roomInst.enemies.length === 0){
+          roomInst.cleared = true;
+          this.rebuildWalls();
+          if(roomInst.meta.type === 'boss'){
+            this.gameWon = true;
+            this.showMessage('Dungeon complete!', 'press retry for another seed');
+            SFX.victory();
+          } else {
+            SFX.roomClear();
+          }
+        }
+      }
+    });
+  },
+
   // ---------- Overlap callbacks (real Arcade Physics collision) ----------
   onPlayerEnemyOverlap(playerSprite, enemySprite){
     const en = enemySprite;
@@ -293,6 +331,7 @@ Object.assign(DungeonScene.prototype, {
     const roomInst = this.curInst();
     for(let i = roomInst.enemies.length - 1; i >= 0; i--){
       const en = roomInst.enemies[i];
+      if(en._falling) continue; // mid pit-fall: its own tween handles cleanup
       if(en._blockCd > 0) en._blockCd -= dt;
 
       if(en.hp <= 0){

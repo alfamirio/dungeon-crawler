@@ -86,6 +86,17 @@ const CONFIG = {
   items: {
     maxBombsCap: 8, bombRefillAmount: 2, maxBombsIncrement: 1, secretHealAmount: 2
   },
+  pits: {
+    roomChance: 0.55, // chance a normal/boss/key room gets pit hazards
+    countMin: 1, countMax: 2,
+    wallMargin: 70, spacing: 24, placementAttempts: 20,
+    centerGuard: 80, // half-size of the no-pit zone kept clear around room center (chest/warp landing spot)
+    ellipse: { rxMin: 38, rxMax: 62, ryMin: 26, ryMax: 42 },
+    rect: { wMin: 70, wMax: 130, hMin: 50, hMax: 85 },
+    moat: { islandMin: 90, islandMax: 130, thickness: 34, gapSize: 74 }, // gapSize reserved for a future jump-across mechanic; moat is a full ring for now
+    borderSpacing: 16, // approx spacing between border rocks
+    playerFallDuration: 0.38, enemyFallDuration: 0.3
+  },
   effects: {
     // Camera shake and hit-stop ("freeze frame") durations/magnitudes
     hitShake: 170, hitShakeMag: 0.010, hitStop: 0.06,
@@ -113,7 +124,9 @@ const COLORS = {
   obstacleEdge: hex('#3a4256'), godmode: hex('#f4d35e'),
   // Flash tints and shield-block spark color
   hurtTint: hex('#ff6666'), happyTint: hex('#bdf5c9'), enemyHitTint: hex('#ffffff'),
-  shieldBlockSpark: hex('#dfe8ff')
+  shieldBlockSpark: hex('#dfe8ff'),
+  // Pit hazard palette (rim lip, mid floor, deep dark core)
+  pitRim: hex('#171b26'), pitFloor: hex('#0d0f16'), pitFill: hex('#05060a')
 };
 
 // Biomes by depth: each stretch of rooms changes the palette (stone/roots/ice/lava).

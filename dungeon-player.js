@@ -39,6 +39,7 @@ Object.assign(DungeonScene.prototype, {
     this.rebuildWalls();
     this.rebuildDecor(inst);
     this.rebuildChest(inst);
+    this.rebuildPits(inst);
   },
 
   moveToRoom(nx, ny, entrySide){
@@ -114,6 +115,33 @@ Object.assign(DungeonScene.prototype, {
     if(toSrc.length() <= 0) return false;
     toSrc.normalize();
     return toSrc.dot(p.dir) >= CONFIG.player.shieldBlockDot;
+  },
+
+  // ---- Pit hazard: overlap callback for pitZonesGroup ----
+  onPlayerPitOverlap(playerSprite, zone){
+    const p = this.playerSprite;
+    if(p.godmode || p.falling || p.dashing > 0 || this.gameOver || this.gameWon) return;
+    if(!pointInPit(p.rx, p.ry, zone.pitRef)) return; // inside the zone's bbox but not the actual hole
+    this.triggerPlayerFall();
+  },
+
+  // Instant-death fall: freeze the player, play a quick shrink/fade, then game over
+  triggerPlayerFall(){
+    const p = this.playerSprite;
+    p.falling = true;
+    p.setVelocity(0, 0);
+    p.body.enable = false;
+    SFX.pitFall();
+    this.cameras.main.shake(220, 0.012);
+    this.tweens.add({
+      targets: p, scale: 0, alpha: 0, duration: CONFIG.pits.playerFallDuration * 1000, ease: 'Cubic.easeIn',
+      onComplete: () => {
+        p.hp = 0;
+        this.gameOver = true;
+        this.showMessage('You fell into the pit', 'press retry');
+        SFX.gameOver();
+      }
+    });
   },
 
   damagePlayer(amount){

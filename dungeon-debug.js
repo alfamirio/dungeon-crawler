@@ -58,6 +58,7 @@ Object.assign(DungeonScene.prototype, {
 
   // Returns to the starting room of the current dungeon (no reseed/reset)
   goToStartRoom(){
+    if(this.playerSprite.falling) return;
     SFX.warp();
     this.current = { x: 0, y: 0 };
     const inst = this.curInst();
@@ -70,6 +71,7 @@ Object.assign(DungeonScene.prototype, {
   },
 
   warpToBossRoom(){
+    if(this.playerSprite.falling) return;
     const bossMeta = [...this.dungeon.rooms.values()].find(m => m.type === 'boss');
     if(!bossMeta) return;
     SFX.warp();

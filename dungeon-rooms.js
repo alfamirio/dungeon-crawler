@@ -149,6 +149,68 @@ Object.assign(DungeonScene.prototype, {
     }
   },
 
+  // ---------- Pits: instant-death hazards ----------
+  // Rebuilds the visual shapes + broad-phase hazard zones for the current
+  // room's pits. Pit geometry itself is fixed at generation time; this only
+  // (re)draws it and (re)creates physics zones, same pattern as rebuildChest.
+  rebuildPits(inst){
+    for(const spr of this.pitSprites) spr.destroy();
+    this.pitSprites = [];
+    this.pitZonesGroup.clear(true, true);
+    const biome = this.biomeNow();
+    for(const pit of inst.pits){
+      this.drawPit(pit, biome);
+      const zx = pit.bbox.x + pit.bbox.w / 2 + WALL, zy = pit.bbox.y + pit.bbox.h / 2 + WALL;
+      const zone = this.add.zone(zx, zy, pit.bbox.w, pit.bbox.h);
+      this.physics.add.existing(zone, true);
+      zone.pitRef = pit;
+      this.pitZonesGroup.add(zone);
+    }
+  },
+
+  // Draws one pit's fill (rim lip / floor / dark core) plus its rock border.
+  drawPit(pit, biome){
+    const g = this.add.graphics().setDepth(0.35);
+    const ox = WALL, oy = WALL;
+    if(pit.kind === 'ellipse'){
+      g.fillStyle(COLORS.pitRim, 1);
+      g.fillEllipse(pit.cx + ox, pit.cy + oy, pit.rx * 2 + 6, pit.ry * 2 + 6);
+      g.fillStyle(COLORS.pitFloor, 1);
+      g.fillEllipse(pit.cx + ox, pit.cy + oy, pit.rx * 2, pit.ry * 2);
+      g.fillStyle(COLORS.pitFill, 0.85);
+      g.fillEllipse(pit.cx + ox, pit.cy + oy, pit.rx * 1.5, pit.ry * 1.5);
+    } else if(pit.kind === 'rect'){
+      g.fillStyle(COLORS.pitRim, 1);
+      g.fillRoundedRect(pit.bbox.x + ox - 3, pit.bbox.y + oy - 3, pit.w + 6, pit.h + 6, 6);
+      g.fillStyle(COLORS.pitFloor, 1);
+      g.fillRoundedRect(pit.bbox.x + ox, pit.bbox.y + oy, pit.w, pit.h, 4);
+      g.fillStyle(COLORS.pitFill, 0.85);
+      g.fillRoundedRect(pit.bbox.x + ox + 8, pit.bbox.y + oy + 8, Math.max(0, pit.w - 16), Math.max(0, pit.h - 16), 4);
+    } else {
+      for(const seg of pit.segments){
+        g.fillStyle(COLORS.pitRim, 1);
+        g.fillRect(seg.x + ox - 3, seg.y + oy - 3, seg.w + 6, seg.h + 6);
+        g.fillStyle(COLORS.pitFloor, 1);
+        g.fillRect(seg.x + ox, seg.y + oy, seg.w, seg.h);
+        g.fillStyle(COLORS.pitFill, 0.85);
+        const inset = Math.min(6, seg.w / 3, seg.h / 3);
+        g.fillRect(seg.x + ox + inset, seg.y + oy + inset, Math.max(0, seg.w - inset * 2), Math.max(0, seg.h - inset * 2));
+      }
+    }
+    this.pitSprites.push(g);
+    this.scatterPitBorderDecor(pit, biome);
+  },
+
+  // Places pre-computed rock/brick points (see makePitBorderRocks) around a
+  // pit's edge, tinted to match the current biome's wall stone.
+  scatterPitBorderDecor(pit, biome){
+    for(const r of pit.rocks){
+      const img = this.add.image(r.x + WALL, r.y + WALL, 'tex_pit_rock')
+        .setRotation(r.angle).setScale(r.scale).setTint(biome.wall).setDepth(0.42);
+      this.pitSprites.push(img);
+    }
+  },
+
   // Locked-door unlock: overlap callback for doorZonesGroup
   onPlayerNearLockedDoor(playerSprite, zone){
     const p = playerSprite;

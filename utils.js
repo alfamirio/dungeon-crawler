@@ -34,6 +34,26 @@ const DIRS = [
   { dx: 1, dy: 0,  name: 'E', opp: 'W' },
   { dx: -1, dy: 0, name: 'W', opp: 'E' }
 ];
+// Precise point-in-pit test, used both at generation time (keeping enemy
+// spawns/decor out of pits) and at runtime (deciding whether a player/enemy
+// standing inside a pit's broad-phase zone is actually over the hole).
+function pointInPit(px, py, pit){
+  if(pit.kind === 'ellipse'){
+    const dx = (px - pit.cx) / pit.rx, dy = (py - pit.cy) / pit.ry;
+    return dx * dx + dy * dy <= 1;
+  }
+  if(pit.kind === 'rect'){
+    return px >= pit.bbox.x && px <= pit.bbox.x + pit.w && py >= pit.bbox.y && py <= pit.bbox.y + pit.h;
+  }
+  if(pit.kind === 'moat'){
+    for(const seg of pit.segments){
+      if(px >= seg.x && px <= seg.x + seg.w && py >= seg.y && py <= seg.y + seg.h) return true;
+    }
+    return false;
+  }
+  return false;
+}
+
 function roomKey(x, y){ return x + ',' + y; }
 function doorKey(x1, y1, x2, y2){
   if(x1 > x2 || (x1 === x2 && y1 > y2)){ const t1 = x1, t2 = y1; x1 = x2; y1 = y2; x2 = t1; y2 = t2; }

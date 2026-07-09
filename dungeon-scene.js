@@ -72,6 +72,9 @@ class DungeonScene extends Phaser.Scene {
     this.chestGroup = this.physics.add.group();
     // Invisible unlock zones along locked-door walls, rebuilt in rebuildWalls()
     this.doorZonesGroup = this.physics.add.staticGroup();
+    // Broad-phase pit hazard zones, rebuilt per room in rebuildPits(); the
+    // overlap callback does the precise ellipse/rect/moat containment test.
+    this.pitZonesGroup = this.physics.add.staticGroup();
 
     this.playerSprite = new PlayerSprite(this, WALL, WALL, 'tex_player');
     this.add.existing(this.playerSprite);
@@ -125,6 +128,9 @@ class DungeonScene extends Phaser.Scene {
     this.physics.add.overlap(this.playerSprite, this.chestGroup, this.onChestPickup, null, this);
     // Locked-door unlock overlap against zones rebuilt in rebuildWalls()
     this.physics.add.overlap(this.playerSprite, this.doorZonesGroup, this.onPlayerNearLockedDoor, null, this);
+    // Pit hazards: instant death for the player, instant death for enemies
+    this.physics.add.overlap(this.playerSprite, this.pitZonesGroup, this.onPlayerPitOverlap, null, this);
+    this.physics.add.overlap(this.enemiesGroup, this.pitZonesGroup, this.onEnemyPitOverlap, null, this);
 
     this.keys = this.input.keyboard.addKeys({
       up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT',
@@ -135,6 +141,7 @@ class DungeonScene extends Phaser.Scene {
 
     this.decorSprites = [];
     this.wallIconSprites = [];
+    this.pitSprites = [];
     this.chestSprite = null;
     this.chestGlow = null;
     this._activeEnemies = null;
@@ -188,9 +195,12 @@ class DungeonScene extends Phaser.Scene {
     ps.hasKey = false; ps.invuln = 0; ps.attackCd = 0; ps.attacking = 0;
     ps.godmode = false; ps.hasShield = true; ps.shielding = false;
     ps.dashCd = 0; ps.dashing = 0; ps.dashDir = { x: 0, y: 1 };
+    ps.falling = false;
     this.playerSprite.body.reset(WALL + ROOM_W / 2, WALL + ROOM_H / 2);
+    this.playerSprite.body.enable = true;
     this.playerSprite.clearTint();
     this.playerSprite.setAlpha(1);
+    this.playerSprite.setScale(1);
     this.setGodmodeVisual(false);
     if(this.invulnTween){ this.invulnTween.stop(); this.invulnTween = null; }
     if(this.invulnBlinkEnd){ this.invulnBlinkEnd.remove(); this.invulnBlinkEnd = null; }
@@ -233,7 +243,7 @@ class DungeonScene extends Phaser.Scene {
   // dungeon-player.js/dungeon-debug.js.
   stepGame(dt){
     const p = this.playerSprite;
-    if(this.gameOver || this.gameWon){ p.setVelocity(0, 0); return; }
+    if(this.gameOver || this.gameWon || p.falling){ p.setVelocity(0, 0); return; }
     if(this.hitStop > 0){ this.hitStop -= dt; p.setVelocity(0, 0); return; }
 
     this.handleMovement(dt);

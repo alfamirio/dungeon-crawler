@@ -134,7 +134,18 @@ function makeObstacles(type){
   return obs;
 }
 
-function makeEnemies(type, distv){
+function pickSpawnClearOfPits(pits){
+  let x, y, attempts = 0;
+  const ec = CONFIG.enemies;
+  do {
+    x = randInt(ec.spawnMargin, ROOM_W - ec.spawnMargin);
+    y = randInt(ec.spawnMargin, ROOM_H - ec.spawnMargin);
+    attempts++;
+  } while(pits && pits.length && pits.some(p => pointInPit(x, y, p)) && attempts < 20);
+  return { x, y };
+}
+
+function makeEnemies(type, distv, pits){
   const enemies = [];
   if(type === 'start' || type === 'item' || type === 'secret') return enemies;
   const ec = CONFIG.enemies;
@@ -143,8 +154,7 @@ function makeEnemies(type, distv){
   for(let i = 0; i < count; i++){
     const isBoss = isBossRoom;
     const isTurret = !isBoss && rand() < ec.turretChance;
-    const x = randInt(ec.spawnMargin, ROOM_W - ec.spawnMargin);
-    const y = randInt(ec.spawnMargin, ROOM_H - ec.spawnMargin);
+    const { x, y } = pickSpawnClearOfPits(pits);
     const stats = isBoss ? ec.boss : (isTurret ? ec.turret : ec.chaser);
     enemies.push({
       type: isBoss ? 'boss' : (isTurret ? 'turret' : 'chaser'),
@@ -156,8 +166,7 @@ function makeEnemies(type, distv){
     const escorts = randInt(ec.bossEscortsMin, ec.bossEscortsMax);
     for(let i = 0; i < escorts; i++){
       const isTurret = rand() < ec.bossEscortTurretChance;
-      const x = randInt(ec.spawnMargin, ROOM_W - ec.spawnMargin);
-      const y = randInt(ec.spawnMargin, ROOM_H - ec.spawnMargin);
+      const { x, y } = pickSpawnClearOfPits(pits);
       const stats = isTurret ? ec.turret : ec.chaser;
       enemies.push({
         type: isTurret ? 'turret' : 'chaser', x, y,
@@ -169,8 +178,130 @@ function makeEnemies(type, distv){
   return enemies;
 }
 
+// ---------- Pits: instant-death hazards (ellipse / rect / castle moat) ----------
+
+// Builds the 4-sided ring of rects that forms a moat pit around its central
+// island. The ring is complete — no bridge/gap — so the island is currently
+// unreachable (a future "jump" mechanic will be the only way across).
+function computeMoatSegments(pit){
+  const thickness = pit.thickness, island = pit.island;
+  const islandRect = { x: pit.cx - island / 2, y: pit.cy - island / 2, w: island, h: island };
+  const outerRect = pit.bbox;
+  const top =    { x: outerRect.x, y: outerRect.y, w: outerRect.w, h: thickness };
+  const bottom = { x: outerRect.x, y: islandRect.y + islandRect.h, w: outerRect.w, h: thickness };
+  const left =   { x: outerRect.x, y: islandRect.y, w: thickness, h: islandRect.h };
+  const right =  { x: islandRect.x + islandRect.w, y: islandRect.y, w: thickness, h: islandRect.h };
+  return [top, bottom, left, right];
+}
+
+// Scatters rock/brick border points along a rectangle's perimeter (used for
+// rect pits and each band of a moat ring).
+function perimeterRectRocks(rect, pushRock, spacing){
+  const nx = Math.max(1, Math.round(rect.w / spacing));
+  const ny = Math.max(1, Math.round(rect.h / spacing));
+  for(let i = 0; i <= nx; i++){
+    if(rand() < 0.2) continue;
+    const x = rect.x + (rect.w * i) / nx;
+    pushRock(x, rect.y, 0, -1);
+    pushRock(x, rect.y + rect.h, 0, 1);
+  }
+  for(let j = 0; j <= ny; j++){
+    if(rand() < 0.2) continue;
+    const y = rect.y + (rect.h * j) / ny;
+    pushRock(rect.x, y, -1, 0);
+    pushRock(rect.x + rect.w, y, 1, 0);
+  }
+}
+
+// Precomputes rock/brick decoration points ringing a pit's edge (geometry
+// only — biome tint is applied at render time). nx/ny below are the outward
+// normal at that border point, used to nudge the rock clear of the hole and
+// orient it to face outward.
+function makePitBorderRocks(pit){
+  const rocks = [];
+  const spacing = CONFIG.pits.borderSpacing;
+  const pushRock = (x, y, nx, ny) => {
+    const jitterOut = 4 + rand() * 6;
+    const angle = Math.atan2(ny, nx) + (rand() - 0.5) * 0.6;
+    rocks.push({ x: x + nx * jitterOut, y: y + ny * jitterOut, angle, scale: 0.7 + rand() * 0.6 });
+  };
+
+  if(pit.kind === 'ellipse'){
+    const circumferenceApprox = Math.PI * (3 * (pit.rx + pit.ry) - Math.sqrt((3 * pit.rx + pit.ry) * (pit.rx + 3 * pit.ry)));
+    const n = Math.max(8, Math.round(circumferenceApprox / spacing));
+    for(let i = 0; i < n; i++){
+      if(rand() < 0.25) continue;
+      const a = (i / n) * Math.PI * 2;
+      const ex = Math.cos(a), ey = Math.sin(a);
+      pushRock(pit.cx + ex * pit.rx, pit.cy + ey * pit.ry, ex, ey);
+    }
+  } else if(pit.kind === 'rect'){
+    perimeterRectRocks(pit.bbox, pushRock, spacing);
+  } else {
+    for(const seg of pit.segments) perimeterRectRocks(seg, pushRock, spacing);
+  }
+  return rocks;
+}
+
+// Places 1-2 non-overlapping pits (avoiding obstacles, other pits, and the
+// room's center — kept clear for chests/warp landings). Follows the same
+// exclusions as makeObstacles: start/item/secret rooms stay hazard-free.
+function makePits(type, obstacles){
+  const pits = [];
+  if(type === 'start' || type === 'item' || type === 'secret') return pits;
+  const pc = CONFIG.pits;
+  if(rand() >= pc.roomChance) return pits;
+  const count = randInt(pc.countMin, pc.countMax);
+  const cg = pc.centerGuard;
+  const centerGuard = { x: ROOM_W / 2 - cg, y: ROOM_H / 2 - cg, w: cg * 2, h: cg * 2 };
+
+  for(let i = 0; i < count; i++){
+    const kind = choice(['ellipse', 'rect', 'moat']);
+    let w, h, extra = {};
+    if(kind === 'ellipse'){
+      const rx = randInt(pc.ellipse.rxMin, pc.ellipse.rxMax);
+      const ry = randInt(pc.ellipse.ryMin, pc.ellipse.ryMax);
+      w = rx * 2; h = ry * 2;
+      extra = { rx, ry };
+    } else if(kind === 'rect'){
+      w = randInt(pc.rect.wMin, pc.rect.wMax);
+      h = randInt(pc.rect.hMin, pc.rect.hMax);
+    } else {
+      const island = randInt(pc.moat.islandMin, pc.moat.islandMax);
+      const thickness = pc.moat.thickness;
+      w = island + thickness * 2; h = island + thickness * 2;
+      extra = { island, thickness };
+    }
+
+    for(let attempt = 0; attempt < pc.placementAttempts; attempt++){
+      const x = randInt(pc.wallMargin, ROOM_W - pc.wallMargin - w);
+      const y = randInt(pc.wallMargin, ROOM_H - pc.wallMargin - h);
+      const rect = { x, y, w, h };
+      let overlaps = rectsOverlap(rect, centerGuard);
+      if(!overlaps){
+        for(const o of obstacles){
+          if(rectsOverlap(rect, { x: o.x - pc.spacing, y: o.y - pc.spacing, w: o.w + pc.spacing * 2, h: o.h + pc.spacing * 2 })){ overlaps = true; break; }
+        }
+      }
+      if(!overlaps){
+        for(const p of pits){
+          if(rectsOverlap(rect, { x: p.bbox.x - pc.spacing, y: p.bbox.y - pc.spacing, w: p.bbox.w + pc.spacing * 2, h: p.bbox.h + pc.spacing * 2 })){ overlaps = true; break; }
+        }
+      }
+      if(overlaps) continue;
+
+      const pit = Object.assign({ kind, bbox: rect, cx: x + w / 2, cy: y + h / 2, w, h }, extra);
+      if(kind === 'moat') pit.segments = computeMoatSegments(pit);
+      pit.rocks = makePitBorderRocks(pit);
+      pits.push(pit);
+      break;
+    }
+  }
+  return pits;
+}
+
 // Decorative, non-colliding scenery: corner and floor markers, tinted per biome
-function makeDecor(type, obstacles){
+function makeDecor(type, obstacles, pits){
   const dc = CONFIG.decor;
   const decor = [];
   const inset = dc.cornerInset;
@@ -192,6 +323,9 @@ function makeDecor(type, obstacles){
       for(const o of obstacles){
         if(x > o.x - dc.obstacleMargin && x < o.x + o.w + dc.obstacleMargin && y > o.y - dc.obstacleMargin && y < o.y + o.h + dc.obstacleMargin){ ok = false; break; }
       }
+      if(ok && pits){
+        for(const p of pits){ if(pointInPit(x, y, p)){ ok = false; break; } }
+      }
     }
     if(ok) decor.push({ kind: 'floor', x, y, size: dc.sizeMin + rand() * (dc.sizeMax - dc.sizeMin) });
   }
@@ -200,10 +334,11 @@ function makeDecor(type, obstacles){
 
 function buildRoomInstance(meta){
   const obstacles = makeObstacles(meta.type);
+  const pits = makePits(meta.type, obstacles);
   return {
-    meta, obstacles,
-    decor: makeDecor(meta.type, obstacles),
-    enemies: makeEnemies(meta.type, meta.dist),
+    meta, obstacles, pits,
+    decor: makeDecor(meta.type, obstacles, pits),
+    enemies: makeEnemies(meta.type, meta.dist, pits),
     cleared: (meta.type === 'start' || meta.type === 'item' || meta.type === 'secret'),
     visited: false, chestTaken: false
   };

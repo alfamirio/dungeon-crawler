@@ -129,6 +129,12 @@ function buildTextures(scene){
     g.strokePoints([{ x: 20, y: 2 }, { x: 38, y: 20 }, { x: 20, y: 38 }, { x: 2, y: 20 }], true);
   });
 
+  // Small rock/brick chunk scattered around pit edges — tinted per biome via setTint().
+  mk('tex_pit_rock', 14, 10, g => {
+    g.fillStyle(0xffffff, 1);
+    g.fillPoints([{ x: 1, y: 8 }, { x: 3, y: 2 }, { x: 8, y: 0 }, { x: 13, y: 3 }, { x: 11, y: 9 }, { x: 5, y: 10 }], true);
+  });
+
   // Corner decor "torch" marker — tinted per biome via setTint().
   mk('tex_decor_corner', 12, 12, g => {
     g.fillStyle(0xffffff, 1);
