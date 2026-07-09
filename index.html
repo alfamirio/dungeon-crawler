@@ -130,6 +130,13 @@
           </label>
         </div>
         <div class="sb-toggle-row">
+          <span class="sb-label">Sound effects</span>
+          <label class="sb-switch">
+            <input type="checkbox" id="cfg-sfx">
+            <span class="sb-slider"></span>
+          </label>
+        </div>
+        <div class="sb-toggle-row">
           <span class="sb-label">Invincibility</span>
           <label class="sb-switch">
             <input type="checkbox" id="cfg-invincible">
@@ -282,6 +289,229 @@
     const step = Math.max(1, (maxDist + 1) / BIOMES.length);
     return BIOMES[Math.min(BIOMES.length - 1, Math.floor(distVal / step))];
   }
+
+  // ---------- Sound: small Web Audio synth, no external assets ----------
+  // Everything is generated procedurally (oscillators + short noise bursts) and
+  // kept deliberately quiet/short so effects stay "subtle" under the action.
+  const SFX = (function(){
+    const BASE_MASTER_GAIN = 0.85; // per-effect envelopes already keep things quiet; this just prevents clipping
+    let ctx = null;
+    let master = null;   // effects bus
+    let musicBus = null; // music bus (separate so the toggle only affects music)
+    let musicOn = false;
+    let sfxOn = true;
+    let musicState = null;
+    let noiseBuffer = null;
+
+    function ensureCtx(){
+      if(ctx) return ctx;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return null;
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = sfxOn ? BASE_MASTER_GAIN : 0;
+      master.connect(ctx.destination);
+      musicBus = ctx.createGain();
+      musicBus.gain.value = 0.0;
+      musicBus.connect(ctx.destination);
+      return ctx;
+    }
+
+    // Unlocks/resumes audio on the first user gesture (autoplay policy).
+    function unlock(){
+      const c = ensureCtx();
+      if(!c) return;
+      if(c.state === 'suspended') c.resume();
+      if(musicOn) startMusic();
+    }
+
+    function getNoiseBuffer(){
+      if(noiseBuffer) return noiseBuffer;
+      const len = ctx.sampleRate * 1;
+      noiseBuffer = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = noiseBuffer.getChannelData(0);
+      for(let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      return noiseBuffer;
+    }
+
+    // Short tone with a quick attack/decay envelope. type: oscillator waveform.
+    function tone(freq, duration, { type = 'sine', gain = 0.5, endFreq = null, delay = 0 } = {}){
+      const c = ensureCtx();
+      if(!c) return;
+      const t0 = c.currentTime + delay;
+      const osc = c.createOscillator();
+      const g = c.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      if(endFreq !== null) osc.frequency.exponentialRampToValueAtTime(Math.max(1, endFreq), t0 + duration);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(gain, t0 + Math.min(0.012, duration * 0.3));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+      osc.connect(g).connect(master);
+      osc.start(t0);
+      osc.stop(t0 + duration + 0.02);
+    }
+
+    // Filtered noise burst — used for percussive/impact/explosion-ish sounds.
+    function noiseBurst(duration, { filterFreq = 1200, filterType = 'bandpass', gain = 0.4, delay = 0 } = {}){
+      const c = ensureCtx();
+      if(!c) return;
+      const t0 = c.currentTime + delay;
+      const src = c.createBufferSource();
+      src.buffer = getNoiseBuffer();
+      const filt = c.createBiquadFilter();
+      filt.type = filterType;
+      filt.frequency.value = filterFreq;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(gain, t0 + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+      src.connect(filt).connect(g).connect(master);
+      src.start(t0);
+      src.stop(t0 + duration + 0.02);
+    }
+
+    // ---- Slow, evolving ambient pad + sparse pentatonic plucks for the Music toggle ----
+    // The pad is 3 persistent voices that glide between chords (no retriggering,
+    // so there's never a hard edge) over a gentle open-fifth progression. A
+    // sparse, randomly-timed plucked melody layers on top for interest.
+    const CHORD_PROGRESSION = [
+      [110.00, 164.81, 220.00], // A2 E3 A3 — Am, open voicing
+      [98.00, 146.83, 196.00],  // G2 D3 G3 — G, open voicing
+      [130.81, 196.00, 261.63], // C3 G3 C4 — C, open voicing
+      [87.31, 130.81, 174.61]   // F2 C3 F3 — F, open voicing
+    ];
+    const PLUCK_SCALE = [220.00, 261.63, 293.66, 329.63, 392.00, 440.00]; // A minor pentatonic
+
+    function startMusic(){
+      const c = ensureCtx();
+      if(!c || musicState) return;
+
+      const chord = CHORD_PROGRESSION[0];
+      const voices = chord.map((freq, i) => {
+        const osc = c.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const g = c.createGain();
+        g.gain.value = 0.04;
+        // slow individual swell so the pad breathes instead of sitting static
+        const lfo = c.createOscillator();
+        lfo.type = 'sine';
+        lfo.frequency.value = 0.04 + i * 0.011;
+        const lfoGain = c.createGain();
+        lfoGain.gain.value = 0.045;
+        lfo.connect(lfoGain).connect(g.gain);
+        osc.connect(g).connect(musicBus);
+        osc.start();
+        lfo.start();
+        return { osc, lfo };
+      });
+
+      musicState = { voices, chordIndex: 0, chordTimer: null, pluckTimer: null };
+
+      // Glide to the next chord in the progression every ~26s, over a slow ~6s crossfade
+      musicState.chordTimer = setInterval(() => {
+        if(!musicState) return;
+        musicState.chordIndex = (musicState.chordIndex + 1) % CHORD_PROGRESSION.length;
+        const nextChord = CHORD_PROGRESSION[musicState.chordIndex];
+        const t0 = c.currentTime;
+        musicState.voices.forEach((v, i) => {
+          v.osc.frequency.cancelScheduledValues(t0);
+          v.osc.frequency.setValueAtTime(v.osc.frequency.value, t0);
+          v.osc.frequency.exponentialRampToValueAtTime(nextChord[i], t0 + 6);
+        });
+      }, 26000);
+
+      scheduleNextPluck();
+
+      musicBus.gain.cancelScheduledValues(c.currentTime);
+      musicBus.gain.setValueAtTime(musicBus.gain.value, c.currentTime);
+      musicBus.gain.linearRampToValueAtTime(1, c.currentTime + 1.5);
+    }
+
+    // Schedules one soft plucked note at a randomized interval so the melody
+    // feels generative/organic rather than looped.
+    function scheduleNextPluck(){
+      if(!musicState) return;
+      const delay = 4500 + Math.random() * 6000; // ~4.5-10.5s between notes
+      musicState.pluckTimer = setTimeout(() => {
+        if(!musicState) return;
+        playPluck();
+        scheduleNextPluck();
+      }, delay);
+    }
+
+    function playPluck(){
+      if(!ctx) return;
+      const freq = PLUCK_SCALE[Math.floor(Math.random() * PLUCK_SCALE.length)];
+      const t0 = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.07, t0 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.2);
+      osc.connect(g).connect(musicBus);
+      osc.start(t0);
+      osc.stop(t0 + 3.3);
+    }
+
+    function stopMusic(){
+      if(!ctx || !musicState) return;
+      const t0 = ctx.currentTime;
+      musicBus.gain.cancelScheduledValues(t0);
+      musicBus.gain.setValueAtTime(musicBus.gain.value, t0);
+      musicBus.gain.linearRampToValueAtTime(0, t0 + 0.8);
+      clearInterval(musicState.chordTimer);
+      clearTimeout(musicState.pluckTimer);
+      const voices = musicState.voices;
+      musicState = null;
+      setTimeout(() => {
+        voices.forEach(v => { try{ v.osc.stop(); v.lfo.stop(); }catch(e){} });
+      }, 900);
+    }
+
+    function setMusic(on){
+      musicOn = on;
+      if(!ctx) return; // will start on unlock() once the context exists
+      if(on) startMusic(); else stopMusic();
+    }
+
+    // Mutes/unmutes every effect (sword, bombs, pickups, etc.) without touching music.
+    function setSfx(on){
+      sfxOn = on;
+      if(!ctx) return; // applied via BASE_MASTER_GAIN once the context is created
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setValueAtTime(master.gain.value, ctx.currentTime);
+      master.gain.linearRampToValueAtTime(on ? BASE_MASTER_GAIN : 0, ctx.currentTime + 0.05);
+    }
+
+    return {
+      unlock,
+      setMusic,
+      setSfx,
+      swordSwing(){ noiseBurst(0.08, { filterFreq: 2600, filterType: 'highpass', gain: 0.12 }); },
+      swordHit(){ noiseBurst(0.07, { filterFreq: 1400, filterType: 'bandpass', gain: 0.22 }); tone(180, 0.05, { type: 'square', gain: 0.08 }); },
+      enemyDeath(){ tone(320, 0.18, { type: 'triangle', gain: 0.18, endFreq: 60 }); noiseBurst(0.12, { filterFreq: 900, gain: 0.12 }); },
+      bombPlace(){ tone(520, 0.07, { type: 'square', gain: 0.1, endFreq: 300 }); },
+      bombExplode(){ noiseBurst(0.35, { filterFreq: 400, filterType: 'lowpass', gain: 0.35 }); tone(90, 0.3, { type: 'sine', gain: 0.22, endFreq: 40 }); },
+      playerHurt(){ tone(220, 0.16, { type: 'sawtooth', gain: 0.16, endFreq: 100 }); },
+      shieldBlock(){ noiseBurst(0.05, { filterFreq: 3200, filterType: 'highpass', gain: 0.1 }); },
+      turretShoot(){ tone(700, 0.05, { type: 'sine', gain: 0.06, endFreq: 500 }); },
+      chestPickup(){ tone(523.25, 0.1, { type: 'sine', gain: 0.16 }); tone(659.25, 0.12, { type: 'sine', gain: 0.14, delay: 0.07 }); tone(783.99, 0.16, { type: 'sine', gain: 0.13, delay: 0.14 }); },
+      keyPickup(){ tone(880, 0.08, { type: 'sine', gain: 0.14 }); tone(1318.5, 0.1, { type: 'sine', gain: 0.1, delay: 0.05 }); },
+      doorUnlock(){ noiseBurst(0.08, { filterFreq: 700, filterType: 'lowpass', gain: 0.14 }); tone(220, 0.08, { type: 'square', gain: 0.08, delay: 0.03 }); },
+      wallBreak(){ noiseBurst(0.16, { filterFreq: 600, filterType: 'lowpass', gain: 0.22 }); },
+      roomClear(){ tone(392.0, 0.1, { type: 'sine', gain: 0.12 }); tone(523.25, 0.14, { type: 'sine', gain: 0.12, delay: 0.09 }); },
+      victory(){ [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, 0.22, { type: 'sine', gain: 0.14, delay: i * 0.11 })); },
+      gameOver(){ tone(220, 0.3, { type: 'sine', gain: 0.16, endFreq: 80 }); },
+      uiClick(){ tone(700, 0.04, { type: 'square', gain: 0.06 }); },
+      warp(){ tone(500, 0.14, { type: 'sine', gain: 0.1, endFreq: 900 }); }
+    };
+  })();
+  window.addEventListener('keydown', SFX.unlock, { once: true });
+  window.addEventListener('pointerdown', SFX.unlock, { once: true });
 
   // ---------- Utils (pure, engine-agnostic — unchanged from the prototype) ----------
   function rectsOverlap(a, b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
@@ -995,6 +1225,7 @@
     // Fires one shot at the player; guards against a dead/deactivated turret or game over.
     turretShoot(en){
       if(!en.active || this.gameOver || this.gameWon) return;
+      SFX.turretShoot();
       const proj = this.projectilesGroup.create(en.x, en.y, 'tex_projectile');
       proj.setCircle(6, proj.width / 2 - 6, proj.height / 2 - 6);
       proj.body.setAllowGravity(false);
@@ -1029,6 +1260,7 @@
       if(burst){
         this.stats.enemiesDefeated++;
         this.updateStatsPanel();
+        SFX.enemyDeath();
       }
       if(burst) this.burst(en.rx, en.ry, en.enemyType === 'boss' ? COLORS.chest : COLORS.enemyHitTint, burstCount);
       if(en.hpBarBg){ en.hpBarBg.destroy(); en.hpBarFill.destroy(); }
@@ -1261,11 +1493,12 @@
       p.invuln = CONFIG.player.invulnDuration;
       this.triggerInvulnBlink(p.invuln);
       this.triggerHurtFlash();
+      SFX.playerHurt();
       const e = CONFIG.effects;
       this.cameras.main.shake(e.hitShake, e.hitShakeMag);
       this.cameras.main.flash(180, 226, 85, 90);
       this.hitStop = e.hitStop;
-      if(p.hp <= 0){ this.gameOver = true; this.showMessage('You have fallen', 'press retry'); }
+      if(p.hp <= 0){ this.gameOver = true; this.showMessage('You have fallen', 'press retry'); SFX.gameOver(); }
     }
 
     // Locked-door unlock: overlap callback for doorZonesGroup
@@ -1278,6 +1511,7 @@
       if(!door || door.state !== 'locked') return;
       door.state = 'open';
       p.hasKey = false;
+      SFX.doorUnlock();
       this.burst(p.rx, p.ry, COLORS.chest, 20);
       this.rebuildWalls();
     }
@@ -1294,6 +1528,7 @@
           if(d.name === 'W' && bx < CONFIG.rooms.crackedWallProximity) near = true;
           if(near){
             door.state = 'open';
+            SFX.wallBreak();
             this.burst(bx, by, COLORS.wallCracked, 24);
             this.rebuildWalls();
           }
@@ -1306,6 +1541,7 @@
       if(!b.active) return;
       const bx = b.x - WALL, by = b.y - WALL;
       this.burst(bx, by, COLORS.bombFuse, 30);
+      SFX.bombExplode();
       const e = CONFIG.effects;
       this.cameras.main.shake(e.bombShake, e.bombShakeMag);
       this.cameras.main.flash(220, 255, 176, 32);
@@ -1349,6 +1585,7 @@
     warpToBossRoom(){
       const bossMeta = [...this.dungeon.rooms.values()].find(m => m.type === 'boss');
       if(!bossMeta) return;
+      SFX.warp();
       this.current = { x: bossMeta.x, y: bossMeta.y };
       const inst = this.curInst();
       inst.visited = true;
@@ -1386,6 +1623,7 @@
       if(this.isShieldBlocking(en.rx, en.ry)){
         if(!(en._blockCd > 0)){
           this.burst(en.rx, en.ry, COLORS.shieldBlockSpark, 4);
+          SFX.shieldBlock();
           en._blockCd = 0.12;
         }
         const push = new Phaser.Math.Vector2(en.rx - p.rx, en.ry - p.ry).normalize().scale(CONFIG.combat.shieldPushSpeed * this._dt);
@@ -1400,7 +1638,7 @@
 
     onPlayerProjectileOverlap(playerSprite, projSprite){
       const prx = projSprite.x - WALL, pry = projSprite.y - WALL;
-      if(this.isShieldBlocking(prx, pry)) this.burst(prx, pry, COLORS.shieldBlockSpark, 4);
+      if(this.isShieldBlocking(prx, pry)){ this.burst(prx, pry, COLORS.shieldBlockSpark, 4); SFX.shieldBlock(); }
       else this.damagePlayer(CONFIG.combat.projectileDamage);
       projSprite.destroy();
     }
@@ -1413,6 +1651,7 @@
       this._swordHitSet.add(en);
       en.hp -= CONFIG.combat.attackDamage;
       this.triggerEnemyHitFlash(en, CONFIG.combat.swordHitFlash);
+      SFX.swordHit();
       if(en.hpBarFill) en.hpBarFill.setSize(this.enemyHpBarWidth(en), CONFIG.enemies.hpBar.height);
       const kb = CONFIG.combat.attackKnockback;
       const kbScale = kb * this._dt * CONFIG.combat.attackKnockbackTimeScale;
@@ -1430,12 +1669,14 @@
       roomInst.chestTaken = true;
       const type = chestSprite.chestType;
       this.triggerHappyFlash();
-      if(type === 'key') p.hasKey = true;
+      if(type === 'key'){ p.hasKey = true; SFX.keyPickup(); }
       else if(type === 'item'){
         p.maxBombs = Phaser.Math.Clamp(p.maxBombs + CONFIG.items.maxBombsIncrement, 0, CONFIG.items.maxBombsCap);
         p.bombs = Phaser.Math.Clamp(p.bombs + CONFIG.items.bombRefillAmount, 0, p.maxBombs);
+        SFX.chestPickup();
       } else if(type === 'secret'){
         p.hp = Phaser.Math.Clamp(p.hp + CONFIG.items.secretHealAmount, 0, p.maxHp);
+        SFX.chestPickup();
       }
       this.burst(chestSprite.x - WALL, chestSprite.y - WALL, COLORS.chest, 24);
       chestSprite.destroy();
@@ -1513,6 +1754,7 @@
         this._swordHitSet.clear();
         this.swordSprite.body.enable = true;
         this.swordSprite.setVisible(true);
+        SFX.swordSwing();
       }
       if(p.attacking > 0){
         const ep = CONFIG.player;
@@ -1553,6 +1795,7 @@
         p.bombs--;
         this.stats.bombsUsed++;
         this.updateStatsPanel();
+        SFX.bombPlace();
         const spr = this.bombsGroup.create(p.x, p.y, 'tex_bomb');
         spr.setImmovable(true);
         spr.body.setAllowGravity(false);
@@ -1613,6 +1856,7 @@
 
     // Returns to the starting room of the current dungeon (no reseed/reset)
     goToStartRoom(){
+      SFX.warp();
       this.current = { x: 0, y: 0 };
       const inst = this.curInst();
       inst.visited = true;
@@ -1660,6 +1904,9 @@
         if(roomInst.meta.type === 'boss'){
           this.gameWon = true;
           this.showMessage('Dungeon complete!', 'press retry for another seed');
+          SFX.victory();
+        } else {
+          SFX.roomClear();
         }
       }
     }
@@ -1843,23 +2090,39 @@
   // ---------- HTML sidebar wiring ----------
   // Buttons/toggles call through to DUNGEON_SCENE (set in DungeonScene.create()).
   document.getElementById('btn-clear-room').addEventListener('click', () => {
+    SFX.unlock(); SFX.uiClick();
     if(DUNGEON_SCENE) DUNGEON_SCENE.debugKillRoom();
   });
   document.getElementById('btn-warp-boss').addEventListener('click', () => {
+    SFX.unlock(); SFX.uiClick();
     if(DUNGEON_SCENE) DUNGEON_SCENE.warpToBossRoom();
   });
   document.getElementById('btn-warp-start').addEventListener('click', () => {
+    SFX.unlock(); SFX.uiClick();
     if(DUNGEON_SCENE) DUNGEON_SCENE.goToStartRoom();
   });
   document.getElementById('cfg-invincible').addEventListener('change', (e) => {
+    SFX.unlock(); SFX.uiClick();
     if(DUNGEON_SCENE) DUNGEON_SCENE.setGodmode(e.target.checked);
   });
   document.getElementById('cfg-unlock').addEventListener('change', (e) => {
+    SFX.unlock(); SFX.uiClick();
     if(DUNGEON_SCENE) DUNGEON_SCENE.setUnlockAll(e.target.checked);
   });
-  // Music: no audio system exists yet in this build. The switch is wired up
-  // and ready, just waiting on a sound implementation to hook into.
-  document.getElementById('cfg-music').addEventListener('change', () => {});
+  const musicChk = document.getElementById('cfg-music');
+  musicChk.checked = true; // subtle ambient pad on by default
+  SFX.setMusic(true);
+  musicChk.addEventListener('change', (e) => {
+    SFX.unlock(); SFX.uiClick();
+    SFX.setMusic(e.target.checked);
+  });
+  const sfxChk = document.getElementById('cfg-sfx');
+  sfxChk.checked = true; // effects on by default
+  sfxChk.addEventListener('change', (e) => {
+    SFX.unlock();
+    if(e.target.checked){ SFX.setSfx(true); SFX.uiClick(); }
+    else { SFX.uiClick(); SFX.setSfx(false); }
+  });
 })();
 </script>
 </body>
