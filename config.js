@@ -116,6 +116,27 @@ const CONFIG = {
     hitShake: 170, hitShakeMag: 0.010, hitStop: 0.06,
     bombShake: 200, bombShakeMag: 0.014, bombHitStop: 0.07,
     attackHitStop: 0.05
+  },
+  // ---- Dynamic adaptive difficulty (see dungeon-adaptive.js) ----
+  // S (skill estimate) lives in [-scoreClamp, scoreClamp], 0 = "as tuned".
+  // It only moves on room-clear / death events, never mid-fight, and only
+  // ever scales enemy hp/speed/turret-cadence — never room layout, enemy
+  // counts, spawn positions, or anything seed-derived.
+  adaptive: {
+    enabled: true,
+    decay: 0.8,               // EWMA smoothing applied to S on each room clear
+    neutralRooms: 2,          // rooms cleared before adaptation starts (session-wide, not per-run)
+    scoreClamp: 1,             // S clamps to [-scoreClamp, scoreClamp]
+    multiplierRange: 0.2,     // enemy hp/speed swing by at most +/-20%
+    bossMultiplierDamping: 0.4, // bosses get a reduced share of the swing (fixed set-piece)
+    weights: {
+      damage: 0.5,            // per-room: damage taken vs half the player's max hp
+      time: 0.25,             // per-room: clear time vs an expected baseline
+      resource: 0.25,         // per-room: bomb/dash usage vs enemy count
+      death: 0.9               // one-off penalty applied when a run ends in death
+    },
+    // Expected clear time baseline (seconds) used to normalize the time score
+    expectedClearSeconds: { base: 12, perEnemy: 4 }
   }
 };
 

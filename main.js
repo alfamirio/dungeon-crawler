@@ -75,6 +75,12 @@ document.getElementById('cfg-unlock').addEventListener('change', (e) => {
   SFX.unlock(); SFX.uiClick();
   if(DUNGEON_SCENE) DUNGEON_SCENE.setUnlockAll(e.target.checked);
 });
+const adaptiveChk = document.getElementById('cfg-adaptive');
+adaptiveChk.checked = true; // on by default, matches CONFIG.adaptive.enabled
+adaptiveChk.addEventListener('change', (e) => {
+  SFX.unlock(); SFX.uiClick();
+  if(DUNGEON_SCENE) DUNGEON_SCENE.setAdaptiveEnabled(e.target.checked);
+});
 const musicChk = document.getElementById('cfg-music');
 musicChk.checked = true; // subtle ambient pad on by default
 SFX.setMusic(true);

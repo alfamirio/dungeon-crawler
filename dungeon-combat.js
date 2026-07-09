@@ -178,6 +178,7 @@ Object.assign(DungeonScene.prototype, {
         this.destroyEnemySprite(en, { burst: false });
         if(!roomInst.cleared && roomInst.enemies.length === 0){
           roomInst.cleared = true;
+          this.adaptiveOnRoomClear();
           this.rebuildWalls();
           this.rebuildChest(roomInst);
           if(roomInst.meta.type === 'boss'){
@@ -449,6 +450,7 @@ Object.assign(DungeonScene.prototype, {
 
     if(!roomInst.cleared && roomInst.enemies.length === 0){
       roomInst.cleared = true;
+      this.adaptiveOnRoomClear();
       this.rebuildWalls(); // sealed -> open door(s) need real gaps now
       this.rebuildChest(roomInst);
       if(roomInst.meta.type === 'boss'){

@@ -28,6 +28,10 @@ Object.assign(DungeonScene.prototype, {
     }
     for(const en of inst.enemies) this.activateEnemy(en);
     this._activeEnemies = inst.enemies;
+    // Adaptive difficulty: scale this room's enemies once (no-op if already
+    // applied on a prior visit), then start tracking this room's performance.
+    this.adaptiveApplyToRoom(inst);
+    this.adaptiveOnRoomEnter();
 
     this.projectilesGroup.clear(true, true);
     for(const b of this.bombsGroup.getChildren()){
@@ -153,6 +157,7 @@ Object.assign(DungeonScene.prototype, {
     if(p.godmode) return;
     if(p.invuln > 0) return;
     p.hp = Phaser.Math.Clamp(p.hp - amount, 0, p.maxHp);
+    this.adaptiveOnDamageTaken(amount);
     p.invuln = CONFIG.player.invulnDuration;
     this.triggerInvulnBlink(p.invuln);
     this.triggerHurtFlash();

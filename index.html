@@ -119,6 +119,7 @@
         <div class="sb-stat-row"><span class="sb-label">Depth</span><span class="sb-value" id="stat-depth">0</span></div>
         <div class="sb-stat-row"><span class="sb-label">Biome</span><span class="sb-value" id="stat-biome">&mdash;</span></div>
         <div class="sb-stat-row"><span class="sb-label">Difficulty</span><span class="sb-value" id="stat-difficulty">0.00</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Adaptive skill</span><span class="sb-value" id="stat-adaptive">0.00 (x1.00)</span></div>
       </div>
       <div class="sb-section">
         <div class="sb-section-title">Config</div>
@@ -150,6 +151,13 @@
             <span class="sb-slider"></span>
           </label>
         </div>
+        <div class="sb-toggle-row">
+          <span class="sb-label">Adaptive difficulty</span>
+          <label class="sb-switch">
+            <input type="checkbox" id="cfg-adaptive">
+            <span class="sb-slider"></span>
+          </label>
+        </div>
       </div>
       <div class="sb-section">
         <button class="sb-btn" id="btn-clear-room">Clear room</button>
@@ -174,6 +182,7 @@
 <script src="dungeon-combat.js"></script>
 <script src="dungeon-player.js"></script>
 <script src="dungeon-debug.js"></script>
+<script src="dungeon-adaptive.js"></script>
 <script src="ui-scene.js"></script>
 <script src="main.js"></script>
 

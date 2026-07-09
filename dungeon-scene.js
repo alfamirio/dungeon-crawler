@@ -23,6 +23,9 @@ class DungeonScene extends Phaser.Scene {
     DUNGEON_SCENE = this;
     // Run-stat counters surfaced in the HTML sidebar (see updateStatsPanel)
     this.stats = { enemiesDefeated: 0, bombsUsed: 0, dashesUsed: 0 };
+    // Adaptive-difficulty skill estimate: initialized once per page load
+    // (not per newGame()) so it can carry across retries within a session.
+    this.initAdaptive();
 
     this.cameras.main.setBackgroundColor(0x000000);
     this.physics.world.setBounds(0, 0, CANVAS_W, CANVAS_H);
@@ -192,6 +195,11 @@ class DungeonScene extends Phaser.Scene {
   }
 
   newGame(){
+    // If the run that just ended was a death (not the initial page load,
+    // not a boss-victory), feed that into the adaptive skill estimate
+    // before anything resets. gameOver is undefined on the very first call.
+    if(this.gameOver) this.adaptiveOnDeath();
+
     // First run honors ?seed=N from the URL; every Retry rolls a new seed.
     this.seed = (!usedUrlSeed && URL_SEED !== null) ? URL_SEED : Math.floor(Math.random() * 0xffffffff) >>> 0;
     usedUrlSeed = true;

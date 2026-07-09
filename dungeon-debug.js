@@ -115,6 +115,11 @@ Object.assign(DungeonScene.prototype, {
     set('stat-depth', depth);
     set('stat-biome', biome.name);
     set('stat-difficulty', difficulty.toFixed(2));
+
+    if(this.adaptive){
+      const mult = this.difficultyMultiplier();
+      set('stat-adaptive', this.adaptive.S.toFixed(2) + ' (x' + mult.toFixed(2) + ')');
+    }
   }
 
 });
