@@ -137,7 +137,26 @@ Object.assign(DungeonScene.prototype, {
     const p = this.playerSprite;
     const k = this.keys;
 
-    p.shielding = p.hasShield && k.shift.isDown;
+    if(p.dashCd > 0) p.dashCd -= dt;
+    if(p.dashing > 0) p.dashing -= dt;
+
+    // Dash: short burst of speed in the current facing direction, with
+    // i-frames for its duration (piggybacks on the existing invuln check
+    // in damagePlayer). Can't be started while shielding, mid-swing, or
+    // already dashing/on cooldown.
+    if(Phaser.Input.Keyboard.JustDown(k.dash) && p.dashCd <= 0 && p.dashing <= 0 && !p.shielding && p.attacking <= 0){
+      const dp = CONFIG.player;
+      p.dashing = dp.dashDuration;
+      p.dashCd = dp.dashCooldown;
+      p.dashDir = { x: p.dir.x, y: p.dir.y };
+      p.invuln = Math.max(p.invuln, p.dashing);
+      this.stats.dashesUsed++;
+      this.updateStatsPanel();
+      this.burst(p.rx, p.ry, COLORS.player, 10);
+      SFX.dash();
+    }
+
+    p.shielding = p.hasShield && k.shift.isDown && p.dashing <= 0;
 
     const move = new Phaser.Math.Vector2(0, 0);
     if(k.left.isDown || k.a.isDown) move.x -= 1;
@@ -146,12 +165,16 @@ Object.assign(DungeonScene.prototype, {
     if(k.down.isDown || k.s.isDown) move.y += 1;
     if(move.x !== 0 || move.y !== 0){
       move.normalize();
-      p.dir = { x: move.x, y: move.y };
+      if(p.dashing <= 0) p.dir = { x: move.x, y: move.y };
     }
 
-    const moveSpeed = p.speed * (p.shielding ? CONFIG.player.shieldSpeedMultiplier : 1);
     // Arcade Physics drives movement + obstacle collision
-    p.setVelocity(move.x * moveSpeed, move.y * moveSpeed);
+    if(p.dashing > 0){
+      p.setVelocity(p.dashDir.x * CONFIG.player.dashSpeed, p.dashDir.y * CONFIG.player.dashSpeed);
+    } else {
+      const moveSpeed = p.speed * (p.shielding ? CONFIG.player.shieldSpeedMultiplier : 1);
+      p.setVelocity(move.x * moveSpeed, move.y * moveSpeed);
+    }
     p.setRotation(Math.atan2(p.dir.y, p.dir.x));
 
     // Static wall bodies already block movement except through door gaps;

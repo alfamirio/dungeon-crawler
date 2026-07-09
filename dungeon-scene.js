@@ -22,7 +22,7 @@ class DungeonScene extends Phaser.Scene {
   create(){
     DUNGEON_SCENE = this;
     // Run-stat counters surfaced in the HTML sidebar (see updateStatsPanel)
-    this.stats = { enemiesDefeated: 0, bombsUsed: 0 };
+    this.stats = { enemiesDefeated: 0, bombsUsed: 0, dashesUsed: 0 };
 
     this.cameras.main.setBackgroundColor(0x000000);
     this.physics.world.setBounds(0, 0, CANVAS_W, CANVAS_H);
@@ -129,7 +129,7 @@ class DungeonScene extends Phaser.Scene {
     this.keys = this.input.keyboard.addKeys({
       up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT',
       w: 'W', a: 'A', s: 'S', d: 'D',
-      space: 'SPACE', shift: 'SHIFT',
+      space: 'SPACE', shift: 'SHIFT', dash: 'E',
       bomb: 'B', dbgKill: 'K', dbgGod: 'I', dbgWarp: 'Y', dbgHome: 'H'
     });
 
@@ -187,6 +187,7 @@ class DungeonScene extends Phaser.Scene {
     ps.bombs = CONFIG.player.startBombs; ps.maxBombs = CONFIG.player.maxBombs;
     ps.hasKey = false; ps.invuln = 0; ps.attackCd = 0; ps.attacking = 0;
     ps.godmode = false; ps.hasShield = true; ps.shielding = false;
+    ps.dashCd = 0; ps.dashing = 0; ps.dashDir = { x: 0, y: 1 };
     this.playerSprite.body.reset(WALL + ROOM_W / 2, WALL + ROOM_H / 2);
     this.playerSprite.clearTint();
     this.playerSprite.setAlpha(1);
@@ -200,7 +201,7 @@ class DungeonScene extends Phaser.Scene {
     this.gameWon = false;
     this.hitStop = 0;
     this._swordHitSet = new Set();
-    this.stats = { enemiesDefeated: 0, bombsUsed: 0 };
+    this.stats = { enemiesDefeated: 0, bombsUsed: 0, dashesUsed: 0 };
     this.unlockAllActive = false;
     const unlockChk = document.getElementById('cfg-unlock');
     if(unlockChk) unlockChk.checked = false;

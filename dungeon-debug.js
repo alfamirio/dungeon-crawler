@@ -95,8 +95,8 @@ Object.assign(DungeonScene.prototype, {
   },
 
   // ---------- HTML sidebar: run-stats panel ----------
-  // Note: arrows/dashes/jumps have no corresponding mechanic in this build
-  // yet, so those rows stay at their static "0" and are left for later.
+  // Note: arrows/jumps have no corresponding mechanic in this build yet,
+  // so those rows stay at their static "0" and are left for later.
   updateStatsPanel(){
     const inst = this.curInst();
     const visitedCount = [...this.roomInstances.values()].filter(r => r.visited).length;
@@ -109,6 +109,7 @@ Object.assign(DungeonScene.prototype, {
     set('stat-rooms', visitedCount);
     set('stat-enemies', this.stats.enemiesDefeated);
     set('stat-bombs', this.stats.bombsUsed);
+    set('stat-dashes', this.stats.dashesUsed);
     set('stat-depth', depth);
     set('stat-biome', biome.name);
     set('stat-difficulty', difficulty.toFixed(2));

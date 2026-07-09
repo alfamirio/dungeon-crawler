@@ -221,7 +221,8 @@ const SFX = (function(){
     victory(){ [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, 0.22, { type: 'sine', gain: 0.14, delay: i * 0.11 })); },
     gameOver(){ tone(220, 0.3, { type: 'sine', gain: 0.16, endFreq: 80 }); },
     uiClick(){ tone(700, 0.04, { type: 'square', gain: 0.06 }); },
-    warp(){ tone(500, 0.14, { type: 'sine', gain: 0.1, endFreq: 900 }); }
+    warp(){ tone(500, 0.14, { type: 'sine', gain: 0.1, endFreq: 900 }); },
+    dash(){ noiseBurst(0.09, { filterFreq: 2200, filterType: 'highpass', gain: 0.14 }); tone(460, 0.08, { type: 'sine', gain: 0.07, endFreq: 900 }); }
   };
 })();
 window.addEventListener('keydown', SFX.unlock, { once: true });

@@ -228,7 +228,7 @@ Object.assign(DungeonScene.prototype, {
 
     if(p.attackCd > 0) p.attackCd -= dt;
     if(p.attacking > 0) p.attacking -= dt;
-    if(k.space.isDown && p.attackCd <= 0 && !p.shielding){
+    if(k.space.isDown && p.attackCd <= 0 && !p.shielding && p.dashing <= 0){
       p.attackCd = CONFIG.player.attackCooldown;
       p.attacking = CONFIG.player.attackDuration;
       this._swordHitSet.clear();
