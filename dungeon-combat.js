@@ -15,16 +15,34 @@ Object.assign(DungeonScene.prototype, {
     spr.enemyType = desc.type;
     spr.hp = desc.hp; spr.maxHp = desc.maxHp; spr.r = desc.r; spr.speed = desc.speed;
     spr._blockCd = 0;
+    // AI traits (see dungeon-enemy-ai.js): personality = movement/aim,
+    // skill = attack pattern. Rolled seed-deterministically in makeEnemies().
+    spr.personality = desc.personality || 'default';
+    spr.skill = desc.skill || 'default';
+    // Skill is telegraphed by the sprite's own color (yellow = default,
+    // orange = explosive, purple = radial) — see ENEMY_SKILLS[].color in
+    // dungeon-enemy-ai.js. Stored on the sprite so hit-flash can restore it.
+    const skillDef = ENEMY_SKILLS[spr.skill];
+    spr._baseTint = skillDef.color ? skillDef.color() : COLORS.skillDefault;
+    // Regular (multiply) tint — tex_chaser/tex_turret/tex_boss are now drawn
+    // in neutral white (see textures.js), so multiplying by the tint color
+    // reproduces it exactly on both Canvas and WebGL renderers.
+    spr.setTint(spr._baseTint);
     spr.setCircle(desc.r, spr.width / 2 - desc.r, spr.height / 2 - desc.r);
     spr.body.setAllowGravity(false);
     spr.setDepth(3);
     if(desc.type === 'turret'){
       spr.body.setImmovable(true);
-      // Repeating timer for turret shots
+      // Base cooldown depends on skill; adaptive difficulty rescales off
+      // spr._baseCooldownMs (see adaptiveApplyToRoom in dungeon-adaptive.js).
+      const baseDelay = spr.skill === 'explosive' ? CONFIG.enemies.skills.explosive.turret.cooldown * 1000
+        : spr.skill === 'radial' ? CONFIG.enemies.skills.radial.turret.cooldown * 1000
+        : CONFIG.enemies.turret.shootCooldown * 1000;
+      spr._baseCooldownMs = baseDelay;
       spr.shootTimer = this.time.addEvent({
-        delay: CONFIG.enemies.turret.shootCooldown * 1000,
+        delay: baseDelay,
         loop: true,
-        callback: () => this.turretShoot(spr)
+        callback: () => ENEMY_SKILLS[spr.skill].onTimer(spr, this)
       });
     }
     if(desc.type === 'boss'){
@@ -34,35 +52,42 @@ Object.assign(DungeonScene.prototype, {
       spr.hpBarFill = this.add.rectangle(bx, by, this.enemyHpBarWidth(spr), barCfg.height, COLORS.chaser, 1).setOrigin(0, 0.5).setDepth(6);
       // Continuous spin at ~0.6 rad/s
       spr.spinTween = this.tweens.add({ targets: spr, angle: 360, duration: (2 * Math.PI / 0.6) * 1000, repeat: -1, ease: 'Linear' });
+      // Bosses only get a skill-cooldown timer for non-default skills (chase
+      // + contact damage already comes from personality + the base collider).
+      if(spr.skill !== 'default'){
+        const bossCfg = CONFIG.enemies.skills[spr.skill].boss;
+        spr._baseSkillCooldownMs = bossCfg.cooldown * 1000;
+        spr.skillTimer = this.time.addEvent({
+          delay: spr._baseSkillCooldownMs,
+          loop: true,
+          callback: () => ENEMY_SKILLS[spr.skill].onTimer(spr, this)
+        });
+      }
     }
+    ENEMY_SKILLS[spr.skill].init(spr, this);
+    this.createEnemyBadge(spr);
     this.deactivateEnemy(spr);
     return spr;
-  },
-
-  // Fires one shot at the player; guards against a dead/deactivated turret or game over.
-  turretShoot(en){
-    if(!en.active || this.gameOver || this.gameWon) return;
-    SFX.turretShoot();
-    const proj = this.projectilesGroup.create(en.x, en.y, 'tex_projectile');
-    proj.setCircle(6, proj.width / 2 - 6, proj.height / 2 - 6);
-    proj.body.setAllowGravity(false);
-    this.physics.moveToObject(proj, this.playerSprite, CONFIG.combat.projectileSpeed);
-    proj.setDepth(3);
   },
 
   activateEnemy(en){
     en.setActive(true).setVisible(true);
     if(en.body){ en.body.enable = true; }
     if(en.hpBarBg){ en.hpBarBg.setVisible(true); en.hpBarFill.setVisible(true); }
-    // Resume the shootTimer so only the active room's turrets fire.
+    if(en.badge) en.badge.setVisible(true);
+    // Resume the timers so only the active room's turrets/bosses act.
     if(en.shootTimer) en.shootTimer.paused = false;
+    if(en.skillTimer) en.skillTimer.paused = false;
   },
 
   deactivateEnemy(en){
     en.setActive(false).setVisible(false);
     if(en.body){ en.body.enable = false; en.body.setVelocity(0, 0); }
     if(en.hpBarBg){ en.hpBarBg.setVisible(false); en.hpBarFill.setVisible(false); }
+    if(en.badge) en.badge.setVisible(false);
     if(en.shootTimer) en.shootTimer.paused = true;
+    if(en.skillTimer) en.skillTimer.paused = true;
+    if(en.chainGraphics) en.chainGraphics.clear();
   },
 
   // Shared hp-bar fill-width calc used by spawn and both damage handlers
@@ -83,7 +108,11 @@ Object.assign(DungeonScene.prototype, {
     if(en.hpBarBg){ en.hpBarBg.destroy(); en.hpBarFill.destroy(); }
     if(en.spinTween) en.spinTween.stop();
     if(en.shootTimer) en.shootTimer.remove(false);
+    if(en.skillTimer) en.skillTimer.remove(false);
     if(en.hitFlashTimer) en.hitFlashTimer.remove(false);
+    if(en.badge) en.badge.destroy();
+    const skillDef = ENEMY_SKILLS[en.skill];
+    if(skillDef && skillDef.cleanup) skillDef.cleanup(en, this);
     if(destroySprite) en.destroy();
   },
 
@@ -99,7 +128,7 @@ Object.assign(DungeonScene.prototype, {
     if(en.hitFlashTimer) en.hitFlashTimer.remove();
     en.hitFlashTimer = this.time.delayedCall(duration * 1000, () => {
       en.hitFlashTimer = null;
-      en.clearTint();
+      en.setTint(en._baseTint);
     });
   },
 
@@ -197,6 +226,10 @@ Object.assign(DungeonScene.prototype, {
   onPlayerEnemyOverlap(playerSprite, enemySprite){
     const en = enemySprite;
     const p = this.playerSprite;
+    if(en.enemyType === 'chaser' && en.skill === 'explosive'){
+      this.detonateKamikaze(en); // idempotent — safe even if the fuse also expires this frame
+      return;
+    }
     if(this.isShieldBlocking(en.rx, en.ry)){
       if(!(en._blockCd > 0)){
         this.burst(en.rx, en.ry, COLORS.shieldBlockSpark, 4);
@@ -431,13 +464,20 @@ Object.assign(DungeonScene.prototype, {
         continue;
       }
 
-      if(en.enemyType === 'chaser' || en.enemyType === 'boss'){
-        if(dist(en.rx, en.ry, p.rx, p.ry) > 1){
-          // moveToObject aims and sets velocity toward the player
-          this.physics.moveToObject(en, p, en.speed);
-        } else en.setVelocity(0, 0);
-      } else if(en.enemyType === 'turret'){
-        en.setVelocity(0, 0);
+      // Skill first: some skills (kamikaze rush, chain lash) take over this
+      // frame's velocity entirely, or remove the enemy outright (kamikaze
+      // detonation) — in which case personality movement is skipped.
+      const skillDef = ENEMY_SKILLS[en.skill] || ENEMY_SKILLS.default;
+      const skillHandledMovement = skillDef.tick(en, dt, this);
+      if(en._kmzDetonated) continue; // this enemy just removed/destroyed itself
+
+      if(!skillHandledMovement){
+        if(en.enemyType === 'chaser' || en.enemyType === 'boss'){
+          const personalityDef = ENEMY_PERSONALITIES[en.personality] || ENEMY_PERSONALITIES.default;
+          personalityDef.move(en, p, dt, this);
+        } else if(en.enemyType === 'turret'){
+          en.setVelocity(0, 0);
+        }
       }
 
       // Boss health bar position sync; width only updates when hp changes
@@ -446,6 +486,7 @@ Object.assign(DungeonScene.prototype, {
         en.hpBarBg.setPosition(en.x + barCfg.xOffset, en.y - en.r - barCfg.yMargin);
         en.hpBarFill.setPosition(en.x + barCfg.xOffset, en.y - en.r - barCfg.yMargin);
       }
+      this.positionEnemyBadge(en);
     }
 
     if(!roomInst.cleared && roomInst.enemies.length === 0){

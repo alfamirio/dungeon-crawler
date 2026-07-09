@@ -163,22 +163,38 @@ function pickSpawnClearOfPits(pits){
   return { x, y };
 }
 
+// Rolls a non-default AI trait ('hunter'/'camper'/'explosive'/'radial') with a
+// chance that ramps up by room depth, or 'default' otherwise. Pure/seed-
+// deterministic — uses rand()/choice() from utils.js — same as every other
+// generation-time roll in this file, so a given ?seed= always reproduces the
+// same personality/skill layout.
+function rollAiTrait(distv, chanceBase, chancePerDist, chanceMax, options){
+  const chance = Math.min(chanceMax, chanceBase + chancePerDist * distv);
+  return rand() < chance ? choice(options) : 'default';
+}
+
 function makeEnemies(type, distv, pits){
   const enemies = [];
   if(type === 'start' || type === 'item' || type === 'secret') return enemies;
   const ec = CONFIG.enemies;
   const isBossRoom = type === 'boss';
   const count = isBossRoom ? 1 : Math.min(ec.baseCount + Math.floor(distv / ec.countPerDist), ec.maxCount);
+  const roll = ec.aiRoll;
+  const rollTraits = () => ({
+    personality: rollAiTrait(distv, roll.personalityChanceBase, roll.personalityChancePerDist, roll.personalityChanceMax, roll.personalities),
+    skill: rollAiTrait(distv, roll.skillChanceBase, roll.skillChancePerDist, roll.skillChanceMax, roll.skills)
+  });
+
   for(let i = 0; i < count; i++){
     const isBoss = isBossRoom;
     const isTurret = !isBoss && rand() < ec.turretChance;
     const { x, y } = pickSpawnClearOfPits(pits);
     const stats = isBoss ? ec.boss : (isTurret ? ec.turret : ec.chaser);
-    enemies.push({
+    enemies.push(Object.assign({
       type: isBoss ? 'boss' : (isTurret ? 'turret' : 'chaser'),
       x, y, hp: stats.hp, maxHp: stats.hp, r: stats.radius,
       speed: isBoss ? ec.boss.speed : (isTurret ? 0 : ec.chaser.speedBase + distv * ec.chaser.speedPerDist)
-    });
+    }, rollTraits()));
   }
   if(isBossRoom){
     const escorts = randInt(ec.bossEscortsMin, ec.bossEscortsMax);
@@ -186,11 +202,11 @@ function makeEnemies(type, distv, pits){
       const isTurret = rand() < ec.bossEscortTurretChance;
       const { x, y } = pickSpawnClearOfPits(pits);
       const stats = isTurret ? ec.turret : ec.chaser;
-      enemies.push({
+      enemies.push(Object.assign({
         type: isTurret ? 'turret' : 'chaser', x, y,
         hp: stats.hp, maxHp: stats.hp, r: stats.radius,
         speed: isTurret ? 0 : ec.chaser.speedBase + distv * ec.chaser.speedPerDist
-      });
+      }, rollTraits()));
     }
   }
   return enemies;

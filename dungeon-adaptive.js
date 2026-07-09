@@ -126,12 +126,25 @@ Object.assign(DungeonScene.prototype, {
         if(en.shootTimer){
           const wasPaused = en.shootTimer.paused;
           en.shootTimer.remove(false);
-          const newDelay = Math.max(300, CONFIG.enemies.turret.shootCooldown * 1000 / scale);
-          en.shootTimer = this.time.addEvent({ delay: newDelay, loop: true, callback: () => this.turretShoot(en) });
+          const baseDelay = en._baseCooldownMs || (CONFIG.enemies.turret.shootCooldown * 1000);
+          const newDelay = Math.max(300, baseDelay / scale);
+          en.shootTimer = this.time.addEvent({ delay: newDelay, loop: true, callback: () => ENEMY_SKILLS[en.skill].onTimer(en, this) });
           en.shootTimer.paused = wasPaused;
         }
       } else {
         en.speed = en.speed * scale;
+      }
+
+      // Boss skill cadence (explosive slam / radial ring) — same treatment
+      // as turret-cadence above, kept as its own branch since a boss can
+      // have both a speed AND a skillTimer to rescale.
+      if(en.skillTimer){
+        const wasPaused = en.skillTimer.paused;
+        en.skillTimer.remove(false);
+        const baseDelay = en._baseSkillCooldownMs || (CONFIG.enemies.skills[en.skill].boss.cooldown * 1000);
+        const newDelay = Math.max(500, baseDelay / scale);
+        en.skillTimer = this.time.addEvent({ delay: newDelay, loop: true, callback: () => ENEMY_SKILLS[en.skill].onTimer(en, this) });
+        en.skillTimer.paused = wasPaused;
       }
     }
   }

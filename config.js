@@ -77,7 +77,57 @@ const CONFIG = {
     chaser: { hp: 2, radius: 24, speedBase: 80, speedPerDist: 5, contactDamage: 1 },
     turret: { hp: 2, radius: 38, shootCooldown: 1.5, contactDamage: 1 },
     boss:   { hp: 10, radius: 44, speed: 95, contactDamage: 2 },
-    hpBar: { width: 60, height: 6, xOffset: -30, yMargin: 16 } // enemy hp-bar geometry
+    hpBar: { width: 60, height: 6, xOffset: -30, yMargin: 16 }, // enemy hp-bar geometry
+
+    // ---- AI traits: personality (movement/aim) + skill (attack pattern) ----
+    // Rolled once per enemy at generation time (dungeon-generation.js, seed-
+    // deterministic via rand()/choice()) and carried on the spawn descriptor.
+    // See dungeon-enemy-ai.js for the behavior tables that read these.
+    aiRoll: {
+      // Chance (0-1) a spawned enemy rolls a non-default trait, ramping with
+      // room depth (dist) and clamped at *ChanceMax.
+      personalityChanceBase: 0.15, personalityChancePerDist: 0.04, personalityChanceMax: 0.6,
+      skillChanceBase: 0.10, skillChancePerDist: 0.05, skillChanceMax: 0.55,
+      personalities: ['hunter', 'camper'],
+      skills: ['explosive', 'radial']
+    },
+    personalities: {
+      hunter: {
+        leadTime: 0.35 // seconds ahead used to predict the player's position (chase + turret/boss aim)
+      },
+      camper: {
+        chaser: { minRange: 90, maxRange: 190, retreatSpeedMult: 0.85 },
+        boss:   { minRange: 110, maxRange: 220, retreatSpeedMult: 0.8 },
+        turret: { engageRange: 340 } // holds fire outside this range instead of always shooting
+      }
+    },
+    skills: {
+      explosive: {
+        chaser: { // kamikaze: rushes in once close, then self-detonates
+          triggerRange: 150, rushSpeedMult: 1.9, fuseTime: 0.55,
+          blastRadius: 70, blastDamage: 2
+        },
+        turret: { // lobs an arcing bomb that lands near the player
+          cooldown: 2.4, travelTime: 0.7, blastRadius: 85, blastDamage: 2
+        },
+        boss: { // telegraphed ground-slam AoE pulse around itself
+          cooldown: 4.5, telegraphTime: 0.5, blastRadius: 140, blastDamage: 2
+        }
+      },
+      radial: {
+        chaser: { // chain lash: hookshot-style ranged hit, no need to close to melee
+          range: 230, cooldown: 1.9, damage: 1,
+          extendTime: 0.13, holdTime: 0.06, retractTime: 0.2
+        },
+        turret: { // omnidirectional ring burst
+          cooldown: 2.1, count: 10, speed: 180
+        },
+        boss: { // bigger ring burst
+          cooldown: 3.6, count: 14, speed: 160
+        }
+      }
+    },
+    badge: { size: 8, yMargin: 14, strokeWidth: 2, fillAlpha: 0.28 } // personality/skill indicator above each enemy
   },
   obstacles: {
     countMin: 3, countMax: 6, sizeMin: 55, sizeMax: 95,
@@ -168,7 +218,9 @@ const COLORS = {
   hurtTint: hex('#ff6666'), happyTint: hex('#bdf5c9'), enemyHitTint: hex('#ffffff'),
   shieldBlockSpark: hex('#dfe8ff'),
   // Pit hazard palette (rim lip, mid floor, deep dark core)
-  pitRim: hex('#171b26'), pitFloor: hex('#0d0f16'), pitFill: hex('#05060a')
+  pitRim: hex('#171b26'), pitFloor: hex('#0d0f16'), pitFill: hex('#05060a'),
+  // AI-trait badge colors: skill = color, personality = icon (see dungeon-enemy-ai.js)
+  skillDefault: hex('#f4d35e'), skillExplosive: hex('#ff6a3d'), skillRadial: hex('#b388ff')
 };
 
 // Biomes: each room independently gets a random biome, chosen once at

@@ -142,21 +142,27 @@ function buildTextures(scene){
   });
 
   mk('tex_chaser', 54, 54, g => {
-    g.fillStyle(COLORS.chaser, 1);
+    // Drawn in neutral white, not COLORS.chaser — the enemy's actual color
+    // comes entirely from its per-skill tint (see spawnEnemySprite in
+    // dungeon-combat.js). A colored base here would multiply against that
+    // tint and never come out clean (e.g. red base + yellow tint = red).
+    g.fillStyle(0xffffff, 1);
     g.fillCircle(27, 27, 24);
     g.fillStyle(0x000000, 0.18);
     g.fillCircle(27, 31, 24 * 0.7);
   });
 
   mk('tex_turret', 82, 62, g => {
-    g.fillStyle(COLORS.turret, 1);
+    // Neutral white base — see tex_chaser comment above.
+    g.fillStyle(0xffffff, 1);
     g.fillEllipse(40, 30, 71, 43);
     g.fillStyle(0xffffff, 0.22);
     g.fillEllipse(28, 19, 23, 13);
   });
 
   mk('tex_boss', 98, 98, g => {
-    g.fillStyle(COLORS.chaser, 1);
+    // Neutral white base — see tex_chaser comment above.
+    g.fillStyle(0xffffff, 1);
     const pts = [];
     for(let i = 0; i < 6; i++){
       const a = Math.PI / 3 * i - Math.PI / 2;
