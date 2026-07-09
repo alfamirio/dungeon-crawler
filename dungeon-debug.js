@@ -20,6 +20,10 @@ Object.assign(DungeonScene.prototype, {
     if(p.godmode) this.godRingSprite.setPosition(p.x, p.y);
     if(Phaser.Input.Keyboard.JustDown(k.dbgWarp)) this.warpToBossRoom();
     if(Phaser.Input.Keyboard.JustDown(k.dbgHome)) this.goToStartRoom();
+    if(Phaser.Input.Keyboard.JustDown(k.dbgWarpN)) this.warpToAdjacentRoom('N');
+    if(Phaser.Input.Keyboard.JustDown(k.dbgWarpE)) this.warpToAdjacentRoom('E');
+    if(Phaser.Input.Keyboard.JustDown(k.dbgWarpS)) this.warpToAdjacentRoom('S');
+    if(Phaser.Input.Keyboard.JustDown(k.dbgWarpW)) this.warpToAdjacentRoom('W');
   },
 
   // Clears every enemy in the current room (K key / sidebar "Clear room")
@@ -56,11 +60,13 @@ Object.assign(DungeonScene.prototype, {
     this.rebuildWalls();
   },
 
-  // Returns to the starting room of the current dungeon (no reseed/reset)
-  goToStartRoom(){
+  // Shared teleport: jumps straight to room (x,y), no reseed/reset, same as
+  // a normal room-entry but skipping movement/door checks. goToStartRoom,
+  // warpToBossRoom, and warpToAdjacentRoom all just pick the target room.
+  warpToRoomAt(x, y){
     if(this.playerSprite.falling) return;
     SFX.warp();
-    this.current = { x: 0, y: 0 };
+    this.current = { x, y };
     const inst = this.curInst();
     inst.visited = true;
     this.playerSprite.body.reset(WALL + ROOM_W / 2, WALL + ROOM_H / 2);
@@ -70,19 +76,25 @@ Object.assign(DungeonScene.prototype, {
     this.updateStatsPanel();
   },
 
+  // Returns to the starting room of the current dungeon (no reseed/reset)
+  goToStartRoom(){
+    this.warpToRoomAt(0, 0);
+  },
+
   warpToBossRoom(){
-    if(this.playerSprite.falling) return;
     const bossMeta = [...this.dungeon.rooms.values()].find(m => m.type === 'boss');
     if(!bossMeta) return;
-    SFX.warp();
-    this.current = { x: bossMeta.x, y: bossMeta.y };
-    const inst = this.curInst();
-    inst.visited = true;
-    this.playerSprite.body.reset(WALL + ROOM_W / 2, WALL + ROOM_H / 2);
-    this.enterRoom();
-    this.seedAmbient(this.biomeNow());
-    this.buildMinimap();
-    this.updateStatsPanel();
+    this.warpToRoomAt(bossMeta.x, bossMeta.y);
+  },
+
+  // Debug keys 1/2/3/4: warp to the room adjacent to the current one in the
+  // given direction, if one exists there — a no-op otherwise (no wraparound,
+  // no reseed, doesn't care whether the door between them is open/locked).
+  warpToAdjacentRoom(dirName){
+    const d = DIRS.find(x => x.name === dirName);
+    const nx = this.current.x + d.dx, ny = this.current.y + d.dy;
+    if(!this.dungeon.rooms.has(roomKey(nx, ny))) return;
+    this.warpToRoomAt(nx, ny);
   },
 
   // ---------- HUD / minimap / message overlay: thin delegators to UIScene ----------

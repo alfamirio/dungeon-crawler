@@ -155,7 +155,10 @@ class DungeonScene extends Phaser.Scene {
       up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT',
       w: 'W', a: 'A', s: 'S', d: 'D',
       space: 'SPACE', shift: 'SHIFT', dash: 'E', hook: 'R',
-      bomb: 'B', dbgKill: 'K', dbgGod: 'I', dbgWarp: 'Y', dbgHome: 'H'
+      bomb: 'B', dbgKill: 'K', dbgGod: 'I', dbgWarp: 'Y', dbgHome: 'H',
+      // Debug: warp to the room adjacent to the current one, if it exists —
+      // 1=N(top), 2=E(right), 3=S(bottom), 4=W(left) (see warpToAdjacentRoom)
+      dbgWarpN: 'ONE', dbgWarpE: 'TWO', dbgWarpS: 'THREE', dbgWarpW: 'FOUR'
     });
 
     this.decorSprites = [];
