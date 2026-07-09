@@ -97,9 +97,55 @@
     position:absolute; inset:0; width:100%; height:100%; background: var(--bg);
   }
   #game canvas{ display:block; width:100% !important; height:100% !important; }
-  /* HUD, minimap, and message overlay are rendered by Phaser (see UIScene) */
+  /* HUD and message overlay are rendered by Phaser (see UIScene); the
+     minimap is plain HTML/CSS, built by UIScene.setMinimap() into
+     #minimap-container so it can live in the right sidebar, outside the
+     game canvas. */
   #hint{
     font-size:12px; color: var(--muted); letter-spacing:1px;
+  }
+  #sidebar-right{
+    width:220px;
+    background: var(--panel);
+    box-shadow: 0 0 0 2px #000, 0 10px 40px rgba(0,0,0,.6);
+    border-radius:6px;
+    padding:16px 14px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    overflow-y:auto;
+  }
+  #minimap-wrap{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:6px 0 4px;
+  }
+  #minimap-container{
+    display:grid;
+    gap:5px;
+  }
+  .mm-cell{
+    width:32px;
+    height:32px;
+    border-radius:4px;
+    transition: background-color .15s;
+  }
+  .mm-cell.mm-current{
+    box-shadow: 0 0 0 2px #0b1410, 0 0 8px 1px var(--accent);
+  }
+  #minimap-legend{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    font-size:11px;
+    color:var(--muted);
+  }
+  #minimap-legend .mm-legend-row{
+    display:flex; align-items:center; gap:8px;
+  }
+  #minimap-legend .mm-swatch{
+    width:12px; height:12px; border-radius:3px; flex-shrink:0;
   }
 </style>
 </head>
@@ -167,6 +213,21 @@
     </div>
     <div id="stage">
       <div id="game"></div>
+    </div>
+    <div id="sidebar-right">
+      <div class="sb-section">
+        <div class="sb-section-title">Minimap</div>
+        <div id="minimap-wrap">
+          <div id="minimap-container"></div>
+        </div>
+        <div id="minimap-legend">
+          <div class="mm-legend-row"><span class="mm-swatch" style="background:#4fd1c5"></span>You are here</div>
+          <div class="mm-legend-row"><span class="mm-swatch" style="background:#3a4256"></span>Visited</div>
+          <div class="mm-legend-row"><span class="mm-swatch" style="background:#f4d35e"></span>Item / key / secret</div>
+          <div class="mm-legend-row"><span class="mm-swatch" style="background:#e2555a"></span>Boss</div>
+          <div class="mm-legend-row"><span class="mm-swatch" style="background:#232838"></span>Unvisited</div>
+        </div>
+      </div>
     </div>
   </div>
   <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; E: dash &nbsp;&middot;&nbsp; R: hookshot &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; Y: debug warp to boss &nbsp;&middot;&nbsp; H: return to start room &nbsp;&middot;&nbsp; 1/2/3/4: warp to adjacent room (N/E/S/W)</span></div>

@@ -199,6 +199,9 @@ const DOOR_GAP = CONFIG.canvas.doorGap;
 const GRID_ROOMS = CONFIG.dungeon.roomCount;
 
 function hex(s){ return parseInt(s.replace('#', ''), 16); }
+// Inverse of hex(): 0xRRGGBB -> '#rrggbb', for spots (e.g. the HTML minimap)
+// that need a CSS color string instead of a Phaser color int.
+function cssColor(n){ return '#' + n.toString(16).padStart(6, '0'); }
 
 const COLORS = {
   wall: hex('#3a4256'), wallLocked: hex('#8a2b2b'), wallCracked: hex('#55606e'), wallSealed: hex('#c97a2b'),

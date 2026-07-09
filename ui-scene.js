@@ -26,8 +26,6 @@ class UIScene extends Phaser.Scene {
     // Shows the current dungeon seed (reproduce via ?seed=<number>)
     this.seedText = this.add.text(CANVAS_W - 14, 30, '', { fontFamily: 'Segoe UI, sans-serif', fontSize: '9px', color: '#4a5062', letterSpacing: 1 }).setOrigin(1, 0).setScrollFactor(0).setDepth(20);
 
-    this.minimapContainer = this.add.container(0, 0).setScrollFactor(0).setDepth(20);
-
     // ---- Message / retry overlay ----
     this.msgText = this.add.text(CANVAS_W / 2, CANVAS_H * 0.4, '', {
       fontFamily: 'Segoe UI, sans-serif', fontSize: '26px', color: '#d9dce3', letterSpacing: 2, align: 'center'
@@ -77,15 +75,23 @@ class UIScene extends Phaser.Scene {
     this.seedText.setText('seed ' + seed);
   }
 
+  // Renders into the HTML #minimap-container (right sidebar), not the
+  // Phaser canvas — plain divs on a CSS grid, so it's easy to size bigger
+  // than the old in-canvas version. cssColor() below turns a 0xRRGGBB
+  // Phaser color int into a '#rrggbb' string for style.background.
   setMinimap(rooms, roomInstances, current){
-    this.minimapContainer.removeAll(true);
+    const container = document.getElementById('minimap-container');
+    if(!container) return;
+    container.innerHTML = '';
+
     const coords = [...rooms.values()];
     const xs = coords.map(r => r.x), ys = coords.map(r => r.y);
     const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-    const cell = 10, gap = 2;
-    const cols = maxX - minX + 1;
-    const originX = CANVAS_W - 14 - (cols * (cell + gap) - gap);
-    const originY = 34;
+    const cols = maxX - minX + 1, rowsCount = maxY - minY + 1;
+
+    container.style.gridTemplateColumns = `repeat(${cols}, 32px)`;
+    container.style.gridTemplateRows = `repeat(${rowsCount}, 32px)`;
+
     for(let y = minY; y <= maxY; y++){
       for(let x = minX; x <= maxX; x++){
         const inst = roomInstances.get(roomKey(x, y));
@@ -95,10 +101,15 @@ class UIScene extends Phaser.Scene {
           if(inst.meta.type === 'boss') color = COLORS.chaser;
           else if(inst.meta.type === 'item' || inst.meta.type === 'key' || inst.meta.type === 'secret') color = hex('#f4d35e');
         }
-        if(x === current.x && y === current.y) color = COLORS.player;
-        const cx = originX + (x - minX) * (cell + gap) + cell / 2;
-        const cy = originY + (y - minY) * (cell + gap) + cell / 2;
-        this.minimapContainer.add(this.add.rectangle(cx, cy, cell, cell, color, 1));
+        const isCurrent = (x === current.x && y === current.y);
+        if(isCurrent) color = COLORS.player;
+
+        const cellEl = document.createElement('div');
+        cellEl.className = 'mm-cell' + (isCurrent ? ' mm-current' : '');
+        cellEl.style.background = cssColor(color);
+        cellEl.style.gridColumn = (x - minX + 1);
+        cellEl.style.gridRow = (y - minY + 1);
+        container.appendChild(cellEl);
       }
     }
   }
