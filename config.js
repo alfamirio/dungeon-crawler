@@ -70,25 +70,12 @@ const CONFIG = {
     maxCount: 6,
     countPerDist: 2,
     turretChance: 0.35,
-    // Rolled only when an enemy didn't come up as a regular turret (see
-    // makeEnemies() in dungeon-generation.js) — stationary like a turret,
-    // but lobs fused bombs (area damage) instead of firing projectiles.
-    bomberChance: 0.25,
-    // Rolled only when an enemy didn't come up as a turret or bomber — a
-    // fast melee-lookalike that arms once it closes within triggerRadius
-    // of the player, then detonates after fuseTime (dealt via explodeRadius
-    // /explodeDamage), instead of dealing ordinary contact damage.
-    kamikazeChance: 0.22,
     spawnMargin: 90,
     bossEscortsMin: 1,
     bossEscortsMax: 2,
     bossEscortTurretChance: 0.4,
-    bossEscortBomberChance: 0.3,
-    bossEscortKamikazeChance: 0.25,
     chaser: { hp: 2, radius: 24, speedBase: 80, speedPerDist: 5, contactDamage: 1 },
     turret: { hp: 2, radius: 38, shootCooldown: 1.5, contactDamage: 1 },
-    bomber: { hp: 3, radius: 38, throwCooldown: 2.2, contactDamage: 1, throwSpeed: 220, fuseTime: 0.9 },
-    kamikaze: { hp: 1, radius: 22, speedBase: 130, speedPerDist: 6, contactDamage: 0, triggerRadius: 70, fuseTime: 0.45, explodeRadius: 95, explodeDamage: 2 },
     boss:   { hp: 10, radius: 44, speed: 95, contactDamage: 2 },
     hpBar: { width: 60, height: 6, xOffset: -30, yMargin: 16 } // enemy hp-bar geometry
   },
@@ -168,12 +155,6 @@ const COLORS = {
   player: hex('#4fd1c5'), playerTail: hex('#3aa89e'),
   sword: hex('#eef2f7'), swordEdge: hex('#aab4c4'),
   chaser: hex('#e2555a'), turret: hex('#caa23a'), projectile: hex('#ffdd57'),
-  bomberTurret: hex('#c23b3b'),
-  // Default melee grunt's body color (kept distinct from COLORS.chaser,
-  // which stays the boss/hit-effect "danger red" used elsewhere)
-  chaserMelee: hex('#e8c34f'),
-  // Red exploding kamikaze chaser
-  kamikaze: hex('#ff4444'),
   bomb: hex('#111318'), bombFuse: hex('#ffb020'),
   hookChain: hex('#b7c0d1'), hookHead: hex('#f4d35e'),
   chest: hex('#f4d35e'), chestSecret: hex('#7fd1a8'), chestReward: hex('#8ec6ff'),

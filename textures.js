@@ -142,29 +142,10 @@ function buildTextures(scene){
   });
 
   mk('tex_chaser', 54, 54, g => {
-    g.fillStyle(COLORS.chaserMelee, 1);
+    g.fillStyle(COLORS.chaser, 1);
     g.fillCircle(27, 27, 24);
     g.fillStyle(0x000000, 0.18);
     g.fillCircle(27, 31, 24 * 0.7);
-  });
-
-  // Kamikaze: same round-body silhouette as tex_chaser, but red with a ring
-  // of outward spikes (mine-like) so it reads as "explosive" at a glance.
-  mk('tex_kamikaze', 54, 54, g => {
-    g.fillStyle(COLORS.kamikaze, 1);
-    for(let i = 0; i < 8; i++){
-      const a = (Math.PI * 2 / 8) * i;
-      const bx = 27 + Math.cos(a) * 21, by = 27 + Math.sin(a) * 21;
-      const tx = 27 + Math.cos(a) * 30, ty = 27 + Math.sin(a) * 30;
-      const perp = a + Math.PI / 2;
-      g.fillTriangle(bx + Math.cos(perp) * 4, by + Math.sin(perp) * 4, bx - Math.cos(perp) * 4, by - Math.sin(perp) * 4, tx, ty);
-    }
-    g.fillStyle(COLORS.kamikaze, 1);
-    g.fillCircle(27, 27, 22);
-    g.fillStyle(0x000000, 0.22);
-    g.fillCircle(27, 31, 22 * 0.7);
-    g.fillStyle(0xffffff, 0.22);
-    g.fillCircle(20, 19, 5);
   });
 
   mk('tex_turret', 82, 62, g => {
@@ -172,20 +153,6 @@ function buildTextures(scene){
     g.fillEllipse(40, 30, 71, 43);
     g.fillStyle(0xffffff, 0.22);
     g.fillEllipse(28, 19, 23, 13);
-  });
-
-  // Bomber turret: same stationary silhouette as tex_turret but red, with a
-  // small bomb icon on its shell so it reads as "throws bombs" at a glance.
-  mk('tex_bomber_turret', 82, 62, g => {
-    g.fillStyle(COLORS.bomberTurret, 1);
-    g.fillEllipse(40, 30, 71, 43);
-    g.fillStyle(0xffffff, 0.18);
-    g.fillEllipse(28, 19, 23, 13);
-    g.fillStyle(0x111318, 1);
-    g.fillCircle(53, 34, 11);
-    g.fillStyle(hex('#ffb020'), 1);
-    g.fillRect(51, 20, 3, 7);
-    g.fillCircle(52.5, 19, 2.2);
   });
 
   mk('tex_boss', 98, 98, g => {
