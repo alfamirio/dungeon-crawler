@@ -34,7 +34,7 @@ const CONFIG = {
     dashSpeed: 520,
     dashDuration: 0.18,
     dashCooldown: 0.6,
-    swordPivotOffset: 15,
+    swordPivotOffset: 26,
     swordSwingStartDeg: 45,
     swordSwingEndDeg: -45,
     invulnBlinkIntervalMs: 83 // blink toggle rate for invulnerability
@@ -53,6 +53,17 @@ const CONFIG = {
     bombHitFlash: 0.16,
     shieldPushSpeed: 140, // enemy push-back speed off a raised shield
     attackKnockbackTimeScale: 6 // time-scaling factor for sword-hit knockback
+  },
+  hookshot: {
+    range: 260,          // max distance a target can be hit from
+    coneDot: 0.55,        // dot-product threshold vs facing dir (narrower = tighter aim cone)
+    damage: 2,
+    cooldown: 0.9,
+    extendTime: 0.11,     // chain shooting outward
+    holdTime: 0.05,       // brief pause at full extension (impact moment)
+    retractTime: 0.16,    // chain snapping back
+    knockback: 160,
+    chainWidth: 4
   },
   enemies: {
     baseCount: 2,
@@ -121,6 +132,7 @@ const COLORS = {
   sword: hex('#eef2f7'), swordEdge: hex('#aab4c4'),
   chaser: hex('#e2555a'), turret: hex('#caa23a'), projectile: hex('#ffdd57'),
   bomb: hex('#111318'), bombFuse: hex('#ffb020'),
+  hookChain: hex('#b7c0d1'), hookHead: hex('#f4d35e'),
   chest: hex('#f4d35e'), chestSecret: hex('#7fd1a8'),
   obstacleEdge: hex('#3a4256'), godmode: hex('#f4d35e'),
   // Flash tints and shield-block spark color

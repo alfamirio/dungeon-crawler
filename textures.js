@@ -172,12 +172,12 @@ function buildTextures(scene){
     g.fillCircle(8, 8, 5);
   });
 
-  // Weapon: sword
-  mk('tex_sword', 52, 12, g => {
+  // Weapon: sword (lengthened blade for a bigger, more satisfying swing)
+  mk('tex_sword', 74, 15, g => {
     g.fillStyle(COLORS.sword, 1);
-    g.fillRoundedRect(2, 1, 50, 10, 3);
-    g.lineStyle(1.5, COLORS.swordEdge, 1);
-    g.strokeRoundedRect(2, 1, 50, 10, 3);
+    g.fillRoundedRect(2, 1.5, 70, 12, 4);
+    g.lineStyle(2, COLORS.swordEdge, 1);
+    g.strokeRoundedRect(2, 1.5, 70, 12, 4);
   });
 
   // Weapon: shield
@@ -186,6 +186,15 @@ function buildTextures(scene){
     g.fillRoundedRect(0, 0, 14, 36, 3);
     g.lineStyle(2, 0x000000, 0.4);
     g.strokeRoundedRect(0, 0, 14, 36, 3);
+  });
+
+  // Weapon: hookshot head — a small arrowhead, drawn pointing along local +x
+  // (matches the sword/shield convention of "0 rotation = facing right").
+  mk('tex_hook_head', 18, 12, g => {
+    g.fillStyle(COLORS.hookHead, 1);
+    g.fillTriangle(0, 1, 18, 6, 0, 11);
+    g.lineStyle(1.5, 0x8a6a1f, 0.5);
+    g.strokeTriangle(0, 1, 18, 6, 0, 11);
   });
 
   // Weapon: bomb

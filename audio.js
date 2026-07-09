@@ -223,6 +223,7 @@ const SFX = (function(){
     uiClick(){ tone(700, 0.04, { type: 'square', gain: 0.06 }); },
     warp(){ tone(500, 0.14, { type: 'sine', gain: 0.1, endFreq: 900 }); },
     dash(){ noiseBurst(0.09, { filterFreq: 2200, filterType: 'highpass', gain: 0.14 }); tone(460, 0.08, { type: 'sine', gain: 0.07, endFreq: 900 }); },
+    hookFire(){ tone(680, 0.06, { type: 'square', gain: 0.09, endFreq: 1100 }); noiseBurst(0.05, { filterFreq: 2400, filterType: 'highpass', gain: 0.08 }); },
     pitFall(){ noiseBurst(0.28, { filterFreq: 280, filterType: 'lowpass', gain: 0.24 }); tone(180, 0.35, { type: 'sine', gain: 0.15, endFreq: 40 }); }
   };
 })();

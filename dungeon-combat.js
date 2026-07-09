@@ -237,6 +237,89 @@ Object.assign(DungeonScene.prototype, {
     this.hitStop = Math.max(this.hitStop, CONFIG.effects.attackHitStop);
   },
 
+  // ---- Weapon: hookshot (R) — instant target-lock at range, animated chain ----
+  // Finds the nearest active enemy within range and within a facing cone;
+  // damage is applied once the animated chain reaches full extension, so the
+  // hit lands in sync with what's on screen even though targeting is instant.
+  handleHookshot(dt){
+    const p = this.playerSprite;
+    const k = this.keys;
+    const hc = CONFIG.hookshot;
+
+    if(p.hookCd > 0) p.hookCd -= dt;
+
+    if(Phaser.Input.Keyboard.JustDown(k.hook) && p.hookCd <= 0 && p.dashing <= 0 && !p.shielding){
+      p.hookCd = hc.cooldown;
+      const room = this.curInst();
+      let best = null, bestDist = Infinity;
+      for(const en of room.enemies){
+        if(en._falling || en.hp <= 0) continue;
+        const dx = en.rx - p.rx, dy = en.ry - p.ry;
+        const d = Math.hypot(dx, dy);
+        if(d > hc.range || d <= 0) continue;
+        const dot = (dx / d) * p.dir.x + (dy / d) * p.dir.y;
+        if(dot < hc.coneDot) continue;
+        if(d < bestDist){ bestDist = d; best = en; }
+      }
+      p.hookTargetEnemy = best;
+      p.hookDist = best ? bestDist : hc.range;
+      p.hookTotal = hc.extendTime + hc.holdTime + hc.retractTime;
+      p.hookElapsed = 0;
+      p.hookActive = true;
+      p.hookHasDealt = false;
+      this.hookHeadSprite.setVisible(true);
+      SFX.hookFire();
+    }
+
+    if(!p.hookActive) return;
+
+    p.hookElapsed += dt;
+    const t = p.hookElapsed;
+    let lenRatio;
+    if(t < hc.extendTime){
+      lenRatio = t / hc.extendTime;
+    } else if(t < hc.extendTime + hc.holdTime){
+      lenRatio = 1;
+      if(!p.hookHasDealt){
+        if(p.hookTargetEnemy && p.hookTargetEnemy.active && p.hookTargetEnemy.hp > 0){
+          this.applyHookHit(p.hookTargetEnemy);
+        }
+        p.hookHasDealt = true;
+      }
+    } else if(t < p.hookTotal){
+      lenRatio = 1 - (t - hc.extendTime - hc.holdTime) / hc.retractTime;
+    } else {
+      p.hookActive = false;
+      this.hookGraphics.clear();
+      this.hookHeadSprite.setVisible(false);
+      return;
+    }
+
+    const len = p.hookDist * Phaser.Math.Clamp(lenRatio, 0, 1);
+    const angle = Math.atan2(p.dir.y, p.dir.x);
+    const tipX = p.x + Math.cos(angle) * len;
+    const tipY = p.y + Math.sin(angle) * len;
+    this.hookGraphics.clear();
+    this.hookGraphics.lineStyle(hc.chainWidth, COLORS.hookChain, 1);
+    this.hookGraphics.lineBetween(p.x, p.y, tipX, tipY);
+    this.hookHeadSprite.setPosition(tipX, tipY);
+    this.hookHeadSprite.setRotation(angle);
+  },
+
+  applyHookHit(en){
+    const hc = CONFIG.hookshot;
+    const p = this.playerSprite;
+    en.hp -= hc.damage;
+    this.triggerEnemyHitFlash(en, CONFIG.combat.swordHitFlash);
+    SFX.swordHit();
+    if(en.hpBarFill) en.hpBarFill.setSize(this.enemyHpBarWidth(en), CONFIG.enemies.hpBar.height);
+    const kbScale = hc.knockback * this._dt * CONFIG.combat.attackKnockbackTimeScale;
+    const nx = en.x + p.dir.x * kbScale, ny = en.y + p.dir.y * kbScale;
+    en.body.reset(nx, ny);
+    this.burst(en.rx, en.ry, en.enemyType === 'boss' ? COLORS.chest : COLORS.chaser, 10);
+    this.hitStop = Math.max(this.hitStop, CONFIG.effects.attackHitStop);
+  },
+
   onChestPickup(playerSprite, chestSprite){
     const p = playerSprite;
     const roomInst = this.curInst();

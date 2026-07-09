@@ -95,7 +95,7 @@ class DungeonScene extends Phaser.Scene {
     });
 
     this.swordSprite = this.physics.add.sprite(WALL, WALL, 'tex_sword');
-    this.swordSprite.setCircle(22, this.swordSprite.width / 2 - 22, this.swordSprite.height / 2 - 22);
+    this.swordSprite.setCircle(30, this.swordSprite.width / 2 - 30, this.swordSprite.height / 2 - 30);
     this.swordSprite.setDepth(5);
     this.swordSprite.body.setAllowGravity(false);
     this.swordSprite.body.enable = false;
@@ -107,6 +107,10 @@ class DungeonScene extends Phaser.Scene {
     this.tailSprite = this.add.image(WALL, WALL, 'tex_tail_poof').setTint(COLORS.playerTail).setDepth(3.9);
     this.tailWag = { angle: 0 };
     this.tweens.add({ targets: this.tailWag, angle: 0.4, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+
+    // Hookshot: a redrawn chain line + arrowhead sprite, driven by handleHookshot()
+    this.hookGraphics = this.add.graphics().setDepth(4.2);
+    this.hookHeadSprite = this.add.image(WALL, WALL, 'tex_hook_head').setDepth(4.3).setVisible(false);
 
     // Invincibility ring, pulsed via a scale tween in setGodmodeVisual()
     this.godRingSprite = this.add.circle(WALL, WALL, CONFIG.player.radius + 16, 0xffe14d, 0)
@@ -140,7 +144,7 @@ class DungeonScene extends Phaser.Scene {
     this.keys = this.input.keyboard.addKeys({
       up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT',
       w: 'W', a: 'A', s: 'S', d: 'D',
-      space: 'SPACE', shift: 'SHIFT', dash: 'E',
+      space: 'SPACE', shift: 'SHIFT', dash: 'E', hook: 'R',
       bomb: 'B', dbgKill: 'K', dbgGod: 'I', dbgWarp: 'Y', dbgHome: 'H'
     });
 
@@ -227,6 +231,10 @@ class DungeonScene extends Phaser.Scene {
     ps.godmode = false; ps.hasShield = true; ps.shielding = false;
     ps.dashCd = 0; ps.dashing = 0; ps.dashDir = { x: 0, y: 1 };
     ps.falling = false;
+    ps.hookCd = 0; ps.hookActive = false; ps.hookElapsed = 0; ps.hookTotal = 0;
+    ps.hookDist = 0; ps.hookTargetEnemy = null; ps.hookHasDealt = false;
+    this.hookGraphics.clear();
+    this.hookHeadSprite.setVisible(false);
     this.playerSprite.body.reset(WALL + ROOM_W / 2, WALL + ROOM_H / 2);
     this.playerSprite.body.enable = true;
     this.playerSprite.clearTint();
@@ -285,6 +293,7 @@ class DungeonScene extends Phaser.Scene {
     this.handleSword(dt);
     this.handleShield();
     this.handleBombs();
+    this.handleHookshot(dt);
     this.handleDebugKeys();
 
     if(p.invuln > 0) p.invuln -= dt;
