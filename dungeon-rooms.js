@@ -136,8 +136,10 @@ Object.assign(DungeonScene.prototype, {
     if((meta.type === 'item' || meta.type === 'key' || meta.type === 'secret') && !inst.chestTaken){
       const cx = ROOM_W / 2 + WALL, cy = ROOM_H / 2 + WALL;
       const isSecret = meta.type === 'secret';
+      const isKey = meta.type === 'key';
+      const texKey = isSecret ? 'tex_chest_secret' : isKey ? 'tex_key_pickup' : 'tex_chest';
       this.chestGlow = this.add.image(cx, cy, 'tex_glow').setTint(isSecret ? COLORS.chestSecret : COLORS.chest).setAlpha(0.4).setScale(0.7).setDepth(1.5);
-      this.chestSprite = this.chestGroup.create(cx, cy, isSecret ? 'tex_chest_secret' : 'tex_chest');
+      this.chestSprite = this.chestGroup.create(cx, cy, texKey);
       const r = CONFIG.rooms.chestPickupRadius;
       this.chestSprite.setCircle(r, this.chestSprite.width / 2 - r, this.chestSprite.height / 2 - r);
       this.chestSprite.body.setAllowGravity(false);

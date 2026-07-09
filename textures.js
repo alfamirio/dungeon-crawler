@@ -135,6 +135,17 @@ function buildTextures(scene){
     g.fillPoints([{ x: 1, y: 8 }, { x: 3, y: 2 }, { x: 8, y: 0 }, { x: 13, y: 3 }, { x: 11, y: 9 }, { x: 5, y: 10 }], true);
   });
 
+  // Key-room pickup: a proper key shape (ring + shaft + teeth), distinct from
+  // the diamond-gem chest used for item/secret rooms.
+  mk('tex_key_pickup', 40, 40, g => {
+    g.lineStyle(5, COLORS.chest, 1);
+    g.strokeCircle(11, 20, 8);
+    g.fillStyle(COLORS.chest, 1);
+    g.fillRect(17, 17, 16, 6);
+    g.fillRect(29, 23, 4, 8);
+    g.fillRect(35, 23, 4, 5);
+  });
+
   // Corner decor "torch" marker — tinted per biome via setTint().
   mk('tex_decor_corner', 12, 12, g => {
     g.fillStyle(0xffffff, 1);
