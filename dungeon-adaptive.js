@@ -122,7 +122,10 @@ Object.assign(DungeonScene.prototype, {
       en.maxHp = newMaxHp;
       if(en.hpBarFill) en.hpBarFill.setSize(this.enemyHpBarWidth(en), CONFIG.enemies.hpBar.height);
 
-      if(en.enemyType === 'turret'){
+      // Turret and wizard both cast on a shootTimer cooldown; wizard is also
+      // mobile (unlike turret, whose speed is always 0) so it additionally
+      // gets its movement speed scaled below like a chaser/boss would.
+      if(en.enemyType === 'turret' || en.enemyType === 'wizard'){
         if(en.shootTimer){
           const wasPaused = en.shootTimer.paused;
           en.shootTimer.remove(false);
@@ -131,7 +134,8 @@ Object.assign(DungeonScene.prototype, {
           en.shootTimer = this.time.addEvent({ delay: newDelay, loop: true, callback: () => ENEMY_SKILLS[en.skill].onTimer(en, this) });
           en.shootTimer.paused = wasPaused;
         }
-      } else {
+      }
+      if(en.enemyType !== 'turret'){
         en.speed = en.speed * scale;
       }
 

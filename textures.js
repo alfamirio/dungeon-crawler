@@ -171,6 +171,18 @@ function buildTextures(scene){
     g.fillPoints(pts, true);
   });
 
+  mk('tex_wizard', 58, 68, g => {
+    // Neutral white base — tinted per-skill like every other enemy (see
+    // tex_chaser comment above). Simple hooded-robe silhouette: a tapered
+    // cone body with a small pointed hat brim up top.
+    g.fillStyle(0xffffff, 1);
+    g.fillTriangle(29, 8, 6, 62, 52, 62);
+    g.fillStyle(0x000000, 0.18);
+    g.fillTriangle(29, 8, 18, 44, 40, 44);
+    g.fillStyle(0xffffff, 1);
+    g.fillEllipse(29, 12, 24, 9);
+  });
+
   mk('tex_projectile', 16, 16, g => {
     g.fillStyle(COLORS.projectile, 0.35);
     g.fillCircle(8, 8, 8);

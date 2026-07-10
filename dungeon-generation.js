@@ -193,28 +193,60 @@ function makeEnemies(type, distv, pits){
     skill: rollAiTrait(distv, roll.skillChanceBase, roll.skillChancePerDist, roll.skillChanceMax, roll.skills)
   });
 
+  // Picks a non-boss enemy type: turret / wizard / chaser, each with its own
+  // roll chance (turretChance + wizardChance should stay well under 1 so
+  // chaser remains the common case).
+  function rollEnemyType(){
+    const r = rand();
+    if(r < ec.turretChance) return 'turret';
+    if(r < ec.turretChance + ec.wizardChance) return 'wizard';
+    return 'chaser';
+  }
+
+  function statsFor(type){
+    if(type === 'turret') return ec.turret;
+    if(type === 'wizard') return ec.wizard;
+    return ec.chaser;
+  }
+
+  function speedFor(type){
+    if(type === 'turret') return 0;
+    if(type === 'wizard') return ec.wizard.speedBase + distv * ec.wizard.speedPerDist;
+    return ec.chaser.speedBase + distv * ec.chaser.speedPerDist;
+  }
+
+  // Rolls personality+skill, then forces 'camper' for wizards — a wizard is
+  // always the mobile keep-range/reposition caster (not randomly rolled),
+  // while its skill (default/explosive/radial) still varies normally.
+  function rollTraitsFor(type){
+    const traits = rollTraits();
+    if(type === 'wizard') traits.personality = 'camper';
+    return traits;
+  }
+
   for(let i = 0; i < count; i++){
     const isBoss = isBossRoom;
-    const isTurret = !isBoss && rand() < ec.turretChance;
+    const type = isBoss ? 'boss' : rollEnemyType();
     const { x, y } = pickSpawnClearOfPits(pits);
-    const stats = isBoss ? ec.boss : (isTurret ? ec.turret : ec.chaser);
+    const stats = isBoss ? ec.boss : statsFor(type);
     enemies.push(Object.assign({
-      type: isBoss ? 'boss' : (isTurret ? 'turret' : 'chaser'),
-      x, y, hp: stats.hp, maxHp: stats.hp, r: stats.radius,
-      speed: isBoss ? ec.boss.speed : (isTurret ? 0 : ec.chaser.speedBase + distv * ec.chaser.speedPerDist)
-    }, rollTraits()));
+      type, x, y, hp: stats.hp, maxHp: stats.hp, r: stats.radius,
+      speed: isBoss ? ec.boss.speed : speedFor(type)
+    }, rollTraitsFor(type)));
   }
   if(isBossRoom){
     const escorts = randInt(ec.bossEscortsMin, ec.bossEscortsMax);
     for(let i = 0; i < escorts; i++){
-      const isTurret = rand() < ec.bossEscortTurretChance;
+      const r = rand();
+      const type = r < ec.bossEscortTurretChance ? 'turret'
+        : r < ec.bossEscortTurretChance + ec.bossEscortWizardChance ? 'wizard' : 'chaser';
       const { x, y } = pickSpawnClearOfPits(pits);
-      const stats = isTurret ? ec.turret : ec.chaser;
+      const stats = statsFor(type);
       enemies.push(Object.assign({
-        type: isTurret ? 'turret' : 'chaser', x, y,
+        type, x, y,
         hp: stats.hp, maxHp: stats.hp, r: stats.radius,
-        speed: isTurret ? 0 : ec.chaser.speedBase + distv * ec.chaser.speedPerDist
-      }, rollTraits()));
+        speed: speedFor(type)
+      }, rollTraitsFor(type)));
     }
   }
   return enemies;

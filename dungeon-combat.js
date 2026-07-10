@@ -10,7 +10,7 @@ Object.assign(DungeonScene.prototype, {
 
   // Creates the persistent EnemySprite for a spawn descriptor; starts deactivated.
   spawnEnemySprite(desc){
-    const tex = desc.type === 'boss' ? 'tex_boss' : desc.type === 'turret' ? 'tex_turret' : 'tex_chaser';
+    const tex = desc.type === 'boss' ? 'tex_boss' : desc.type === 'turret' ? 'tex_turret' : desc.type === 'wizard' ? 'tex_wizard' : 'tex_chaser';
     const spr = this.enemiesGroup.create(desc.x + WALL, desc.y + WALL, tex);
     spr.enemyType = desc.type;
     spr.hp = desc.hp; spr.maxHp = desc.maxHp; spr.r = desc.r; spr.speed = desc.speed;
@@ -44,6 +44,24 @@ Object.assign(DungeonScene.prototype, {
         loop: true,
         callback: () => ENEMY_SKILLS[spr.skill].onTimer(spr, this)
       });
+    }
+    if(desc.type === 'wizard'){
+      // Mobile caster: unlike a turret it isn't immovable and has no fixed
+      // spot, but it still casts on its own cooldown timer the same way a
+      // turret does — just while the camper personality repositions it.
+      const baseDelay = spr.skill === 'explosive' ? CONFIG.enemies.skills.explosive.wizard.cooldown * 1000
+        : spr.skill === 'radial' ? CONFIG.enemies.skills.radial.wizard.cooldown * 1000
+        : CONFIG.enemies.wizard.boltCooldown * 1000;
+      spr._baseCooldownMs = baseDelay;
+      spr.shootTimer = this.time.addEvent({
+        delay: baseDelay,
+        loop: true,
+        callback: () => ENEMY_SKILLS[spr.skill].onTimer(spr, this)
+      });
+      // Teleport: independent of skill/personality, staggered so every
+      // wizard in a room doesn't blink on the same frame.
+      spr.teleportCd = rand() * CONFIG.enemies.wizard.teleport.cooldown;
+      spr._teleporting = false;
     }
     if(desc.type === 'boss'){
       const barCfg = CONFIG.enemies.hpBar;
@@ -88,6 +106,10 @@ Object.assign(DungeonScene.prototype, {
     if(en.shootTimer) en.shootTimer.paused = true;
     if(en.skillTimer) en.skillTimer.paused = true;
     if(en.chainGraphics) en.chainGraphics.clear();
+    // A wizard's blink-out/blink-in tween pair shouldn't keep running (and
+    // re-enable its body later) once its room is no longer active.
+    if(en._teleportTween){ en._teleportTween.stop(); en._teleportTween = null; }
+    if(en._teleporting){ en._teleporting = false; en.setAlpha(1).setScale(1); }
   },
 
   // Shared hp-bar fill-width calc used by spawn and both damage handlers
@@ -110,6 +132,7 @@ Object.assign(DungeonScene.prototype, {
     if(en.shootTimer) en.shootTimer.remove(false);
     if(en.skillTimer) en.skillTimer.remove(false);
     if(en.hitFlashTimer) en.hitFlashTimer.remove(false);
+    if(en._teleportTween) en._teleportTween.stop();
     if(en.badge) en.badge.destroy();
     const skillDef = ENEMY_SKILLS[en.skill];
     if(skillDef && skillDef.cleanup) skillDef.cleanup(en, this);
@@ -241,6 +264,7 @@ Object.assign(DungeonScene.prototype, {
     } else {
       const contactDamage = en.enemyType === 'boss' ? CONFIG.enemies.boss.contactDamage
         : en.enemyType === 'turret' ? CONFIG.enemies.turret.contactDamage
+        : en.enemyType === 'wizard' ? CONFIG.enemies.wizard.contactDamage
         : CONFIG.enemies.chaser.contactDamage;
       this.damagePlayer(contactDamage);
     }
@@ -456,12 +480,25 @@ Object.assign(DungeonScene.prototype, {
     for(let i = roomInst.enemies.length - 1; i >= 0; i--){
       const en = roomInst.enemies[i];
       if(en._falling) continue; // mid pit-fall: its own tween handles cleanup
+      if(en._teleporting) continue; // mid blink: its own tween handles cleanup
       if(en._blockCd > 0) en._blockCd -= dt;
 
       if(en.hp <= 0){
         this.destroyEnemySprite(en, { burst: true, burstCount: 16 });
         roomInst.enemies.splice(i, 1);
         continue;
+      }
+
+      // Wizard teleport: independent of skill/personality — a blink-away
+      // escape that fires whenever the player closes inside triggerRange and
+      // its own cooldown is up, layered on top of camper's normal walk-away.
+      if(en.enemyType === 'wizard'){
+        if(en.teleportCd > 0) en.teleportCd -= dt;
+        const tcfg = CONFIG.enemies.wizard.teleport;
+        if(en.teleportCd <= 0 && dist(en.rx, en.ry, p.rx, p.ry) <= tcfg.triggerRange){
+          this.startWizardTeleport(en);
+          continue; // teleport just began this frame; skip skill/movement below
+        }
       }
 
       // Skill first: some skills (kamikaze rush, chain lash) take over this
@@ -472,7 +509,7 @@ Object.assign(DungeonScene.prototype, {
       if(en._kmzDetonated) continue; // this enemy just removed/destroyed itself
 
       if(!skillHandledMovement){
-        if(en.enemyType === 'chaser' || en.enemyType === 'boss'){
+        if(en.enemyType === 'chaser' || en.enemyType === 'boss' || en.enemyType === 'wizard'){
           const personalityDef = ENEMY_PERSONALITIES[en.personality] || ENEMY_PERSONALITIES.default;
           personalityDef.move(en, p, dt, this);
         } else if(en.enemyType === 'turret'){

@@ -70,13 +70,26 @@ const CONFIG = {
     maxCount: 6,
     countPerDist: 2,
     turretChance: 0.35,
+    wizardChance: 0.25, // rolled alongside turretChance (see makeEnemies in dungeon-generation.js)
     spawnMargin: 90,
     bossEscortsMin: 1,
     bossEscortsMax: 2,
     bossEscortTurretChance: 0.4,
+    bossEscortWizardChance: 0.25,
     chaser: { hp: 2, radius: 24, speedBase: 80, speedPerDist: 5, contactDamage: 1 },
     turret: { hp: 2, radius: 38, shootCooldown: 1.5, contactDamage: 1 },
     boss:   { hp: 10, radius: 44, speed: 95, contactDamage: 2 },
+    // Mobile spellcaster: moves like a camper (holds range, repositions) rather
+    // than sitting still like a turret. See dungeon-enemy-ai.js personalities.camper.wizard
+    // for its range band, and skills.*.wizard below for its attack variants.
+    wizard: {
+      hp: 3, radius: 26, speedBase: 55, speedPerDist: 3, contactDamage: 1, boltCooldown: 1.7,
+      // Blinks away instead of just walking when the player closes inside
+      // triggerRange (on top of camper's normal walk-based retreat), landing
+      // somewhere in [minSpawnDist, maxSpawnDist] of the player, clear of
+      // obstacles/pits. cooldown gates how often it can do this.
+      teleport: { cooldown: 3.0, triggerRange: 130, minSpawnDist: 180, maxSpawnDist: 340, blinkOutTime: 0.18, blinkInTime: 0.2 }
+    },
     hpBar: { width: 60, height: 6, xOffset: -30, yMargin: 16 }, // enemy hp-bar geometry
 
     // ---- AI traits: personality (movement/aim) + skill (attack pattern) ----
@@ -98,7 +111,12 @@ const CONFIG = {
       camper: {
         chaser: { minRange: 90, maxRange: 190, retreatSpeedMult: 0.85 },
         boss:   { minRange: 110, maxRange: 220, retreatSpeedMult: 0.8 },
-        turret: { engageRange: 340 } // holds fire outside this range instead of always shooting
+        turret: { engageRange: 340 }, // holds fire outside this range instead of always shooting
+        // Wizard is always camper (forced in makeEnemies, not randomly rolled) —
+        // wider range band than a melee chaser since it's kiting at spell range,
+        // plus its own engageRange (used the same way turret's is: holds fire
+        // outside this distance rather than casting on cooldown regardless).
+        wizard: { minRange: 160, maxRange: 340, retreatSpeedMult: 0.9, engageRange: 380 }
       }
     },
     skills: {
@@ -112,6 +130,9 @@ const CONFIG = {
         },
         boss: { // telegraphed ground-slam AoE pulse around itself
           cooldown: 4.5, telegraphTime: 0.5, blastRadius: 140, blastDamage: 2
+        },
+        wizard: { // lobbed fireball, same shape as the turret's bomb lob
+          cooldown: 2.6, travelTime: 0.65, blastRadius: 80, blastDamage: 2
         }
       },
       radial: {
@@ -124,6 +145,9 @@ const CONFIG = {
         },
         boss: { // bigger ring burst
           cooldown: 3.6, count: 14, speed: 160
+        },
+        wizard: { // arcane ring burst, slightly smaller/faster than the turret's
+          cooldown: 2.3, count: 8, speed: 200
         }
       }
     },

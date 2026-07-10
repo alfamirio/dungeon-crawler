@@ -54,7 +54,7 @@ const ENEMY_PERSONALITIES = {
   // fire otherwise.
   camper: {
     move(en, p, dt, scene){
-      const key = en.enemyType === 'boss' ? 'boss' : 'chaser';
+      const key = en.enemyType === 'boss' ? 'boss' : en.enemyType === 'wizard' ? 'wizard' : 'chaser';
       const cfg = CONFIG.enemies.personalities.camper[key];
       const d = dist(en.rx, en.ry, p.rx, p.ry);
       if(d > cfg.maxRange){
@@ -70,7 +70,8 @@ const ENEMY_PERSONALITIES = {
     },
     aimPoint(en, p, scene){ return { x: p.x, y: p.y }; },
     canEngage(en, p, scene){
-      const cfg = CONFIG.enemies.personalities.camper.turret;
+      const key = en.enemyType === 'wizard' ? 'wizard' : 'turret';
+      const cfg = CONFIG.enemies.personalities.camper[key];
       return dist(en.rx, en.ry, p.rx, p.ry) <= cfg.engageRange;
     }
   }
@@ -88,12 +89,16 @@ const ENEMY_SKILLS = {
     // Fired by the enemy's own cooldown timer (turret always has one; boss
     // only gets one for non-default skills).
     onTimer(en, scene){
-      if(en.enemyType === 'turret') scene.fireTurretShot(en);
+      // fireTurretShot is generic (aims via the enemy's own personality,
+      // doesn't hardcode turret-specific behavior) so the wizard's plain
+      // "arcane bolt" reuses it rather than duplicating the same shot logic.
+      if(en.enemyType === 'turret' || en.enemyType === 'wizard') scene.fireTurretShot(en);
     },
     cleanup(en, scene){}
   },
 
-  // Kamikaze (chaser) / lobbed bomb (turret) / ground-slam pulse (boss).
+  // Kamikaze (chaser) / lobbed bomb (turret) / ground-slam pulse (boss) /
+  // lobbed fireball (wizard).
   explosive: {
     color: () => COLORS.skillExplosive,
     init(en, scene){
@@ -122,11 +127,13 @@ const ENEMY_SKILLS = {
     onTimer(en, scene){
       if(en.enemyType === 'turret') scene.fireTurretBomb(en);
       else if(en.enemyType === 'boss') scene.fireBossSlam(en);
+      else if(en.enemyType === 'wizard') scene.fireWizardFireball(en);
     },
     cleanup(en, scene){}
   },
 
-  // Chain lash (chaser) / ring burst (turret) / bigger ring burst (boss).
+  // Chain lash (chaser) / ring burst (turret) / bigger ring burst (boss) /
+  // arcane ring burst (wizard).
   radial: {
     color: () => COLORS.skillRadial,
     init(en, scene){
@@ -144,6 +151,7 @@ const ENEMY_SKILLS = {
     onTimer(en, scene){
       if(en.enemyType === 'turret') scene.fireTurretRing(en);
       else if(en.enemyType === 'boss') scene.fireBossRing(en);
+      else if(en.enemyType === 'wizard') scene.fireWizardRing(en);
     },
     cleanup(en, scene){
       if(en.chainGraphics) en.chainGraphics.destroy();
@@ -368,6 +376,113 @@ Object.assign(DungeonScene.prototype, {
       proj.setVelocity(Math.cos(a) * cfg.speed, Math.sin(a) * cfg.speed);
       proj.setDepth(3);
     }
+  },
+
+  // ---------- Wizard attacks (dispatched from the wizard's shootTimer) ----------
+  // Same lob/telegraph/detonate shape as fireTurretBomb, just its own cfg
+  // key and a slightly smaller/faster blast to feel like a quicker spell
+  // rather than a heavy bomb.
+  fireWizardFireball(en){
+    if(!en.active || this.gameOver || this.gameWon) return;
+    const personality = ENEMY_PERSONALITIES[en.personality] || ENEMY_PERSONALITIES.default;
+    const p = this.playerSprite;
+    if(!personality.canEngage(en, p, this)) return;
+    const cfg = CONFIG.enemies.skills.explosive.wizard;
+    const target = personality.aimPoint(en, p, this);
+    SFX.bombPlace();
+    const spr = this.add.image(en.x, en.y, 'tex_bomb').setTint(COLORS.skillExplosive).setDepth(3);
+    const reticle = this.add.circle(target.x, target.y, cfg.blastRadius, COLORS.skillExplosive, 0.12)
+      .setStrokeStyle(2, COLORS.skillExplosive, 0.5).setDepth(2.5);
+    this.tweens.add({
+      targets: spr, x: target.x, y: target.y, duration: cfg.travelTime * 1000, ease: 'Sine.easeIn',
+      onComplete: () => {
+        spr.destroy(); reticle.destroy();
+        if(this.gameOver || this.gameWon) return;
+        this.burst(target.x - WALL, target.y - WALL, COLORS.skillExplosive, 22);
+        SFX.bombExplode();
+        this.cameras.main.shake(CONFIG.effects.bombShake, CONFIG.effects.bombShakeMag);
+        const d = Phaser.Math.Distance.Between(target.x, target.y, p.x, p.y);
+        if(d <= cfg.blastRadius && !p.falling && !this.isShieldBlocking(target.x - WALL, target.y - WALL)){
+          this.damagePlayer(cfg.blastDamage);
+        }
+      }
+    });
+  },
+
+  // Same shape as fireTurretRing, own cfg key.
+  fireWizardRing(en){
+    if(!en.active || this.gameOver || this.gameWon) return;
+    const personality = ENEMY_PERSONALITIES[en.personality] || ENEMY_PERSONALITIES.default;
+    if(!personality.canEngage(en, this.playerSprite, this)) return;
+    const cfg = CONFIG.enemies.skills.radial.wizard;
+    SFX.turretShoot();
+    en._ringAngleOffset = (en._ringAngleOffset || 0) + 0.25;
+    for(let i = 0; i < cfg.count; i++){
+      const a = (i / cfg.count) * Math.PI * 2 + en._ringAngleOffset;
+      const proj = this.projectilesGroup.create(en.x, en.y, 'tex_projectile').setTint(COLORS.skillRadial);
+      proj.setCircle(6, proj.width / 2 - 6, proj.height / 2 - 6);
+      proj.body.setAllowGravity(false);
+      proj.setVelocity(Math.cos(a) * cfg.speed, Math.sin(a) * cfg.speed);
+      proj.setDepth(3);
+    }
+  },
+
+  // ---------- Wizard teleport (escape mechanic, independent of skill/personality) ----------
+  // Samples points in a ring around the player at [minSpawnDist, maxSpawnDist],
+  // rejecting any that land in an obstacle or pit, or that a wall-clamp pulled
+  // back inside minSpawnDist. Room-local coords throughout, same convention
+  // as pickSpawnClearOfPits (dungeon-generation.js) but done live against the
+  // *current* room instance rather than at generation time.
+  pickWizardTeleportSpot(en, cfg){
+    const inst = this.curInst();
+    const p = this.playerSprite;
+    const margin = CONFIG.enemies.spawnMargin;
+    for(let attempt = 0; attempt < 20; attempt++){
+      const angle = rand() * Math.PI * 2;
+      const d = cfg.minSpawnDist + rand() * (cfg.maxSpawnDist - cfg.minSpawnDist);
+      const x = Phaser.Math.Clamp(p.rx + Math.cos(angle) * d, margin, ROOM_W - margin);
+      const y = Phaser.Math.Clamp(p.ry + Math.sin(angle) * d, margin, ROOM_H - margin);
+      if(dist(x, y, p.rx, p.ry) < cfg.minSpawnDist) continue; // wall-clamp pulled it back too close
+      let blocked = false;
+      for(const o of inst.obstacles){
+        if(x > o.x - 16 && x < o.x + o.w + 16 && y > o.y - 16 && y < o.y + o.h + 16){ blocked = true; break; }
+      }
+      if(!blocked){
+        for(const pit of inst.pits){ if(pointInPit(x, y, pit)){ blocked = true; break; } }
+      }
+      if(!blocked) return { x, y };
+    }
+    return null; // room too cluttered this attempt; caller retries next frame after a short cooldown
+  },
+
+  // Blink-out / reposition / blink-in. Disables the body for the duration so
+  // it can't be hit or deal contact damage mid-blink, same spirit as the
+  // player's dash i-frames.
+  startWizardTeleport(en){
+    const cfg = CONFIG.enemies.wizard.teleport;
+    const spot = this.pickWizardTeleportSpot(en, cfg);
+    if(!spot){ en.teleportCd = 0.4; return; } // couldn't find a clear spot; try again shortly
+    en._teleporting = true;
+    en.teleportCd = cfg.cooldown;
+    en.setVelocity(0, 0);
+    if(en.body) en.body.enable = false;
+    SFX.warp();
+    this.burst(en.rx, en.ry, COLORS.skillRadial, 14);
+    en._teleportTween = this.tweens.add({
+      targets: en, alpha: 0, scale: 0.3, duration: cfg.blinkOutTime * 1000, ease: 'Cubic.easeIn',
+      onComplete: () => {
+        en.body.reset(spot.x + WALL, spot.y + WALL);
+        this.burst(spot.x, spot.y, COLORS.skillRadial, 14);
+        en._teleportTween = this.tweens.add({
+          targets: en, alpha: 1, scale: 1, duration: cfg.blinkInTime * 1000, ease: 'Cubic.easeOut',
+          onComplete: () => {
+            if(en.body) en.body.enable = true;
+            en._teleporting = false;
+            en._teleportTween = null;
+          }
+        });
+      }
+    });
   },
 
   // ---------- Boss attacks (dispatched from the boss's skillTimer) ----------
