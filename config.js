@@ -40,7 +40,7 @@ const CONFIG = {
     invulnBlinkIntervalMs: 83 // blink toggle rate for invulnerability
   },
   combat: {
-    attackDamage: 1,
+    attackDamage: 2,
     attackKnockback: 120,
     bombFuseTime: 1.0,
     bombRadius: 100,
@@ -55,14 +55,14 @@ const CONFIG = {
     attackKnockbackTimeScale: 6 // time-scaling factor for sword-hit knockback
   },
   hookshot: {
-    range: 260,          // max distance a target can be hit from
+    range: 150,          // max distance a target can be hit from
     coneDot: 0.55,        // dot-product threshold vs facing dir (narrower = tighter aim cone)
-    damage: 2,
+    damage: 1,
     cooldown: 0.9,
     extendTime: 0.11,     // chain shooting outward
     holdTime: 0.05,       // brief pause at full extension (impact moment)
     retractTime: 0.16,    // chain snapping back
-    knockback: 160,
+    knockback: 150,
     chainWidth: 4
   },
   enemies: {
@@ -137,7 +137,7 @@ const CONFIG = {
       },
       radial: {
         chaser: { // chain lash: hookshot-style ranged hit, no need to close to melee
-          range: 230, cooldown: 1.9, damage: 1,
+          range: 150, cooldown: 1.9, damage: 1,
           extendTime: 0.13, holdTime: 0.06, retractTime: 0.2
         },
         turret: { // omnidirectional ring burst
@@ -226,7 +226,7 @@ const CONFIG = {
     enabled: true,
     roomChance: 0.35,
     eligibleTypes: ['normal', 'boss', 'key'], // start/item/secret stay excluded, like pits
-    radius: 170,     // fully-visible core, in room-local pixels
+    radius: 180,     // fully-visible core, in room-local pixels
     softness: 70,    // feathered falloff band beyond the core
     flicker: { enabled: true, amplitude: 6, speedHz: 0.6 } // cosmetic torch waver
   }
