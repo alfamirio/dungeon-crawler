@@ -1,69 +1,69 @@
-# Dungeon Crawler — Prototype
+# Dungeon // Phaser 4 dungeon crawler
 
-A procedurally generated top-down dungeon crawler built with vanilla JS and canvas 2D. No build step, no dependencies — just open `index.html` in a browser.
+A browser-based, procedurally generated dungeon crawler built on [Phaser 4](https://phaser.io/). Every run generates a fresh, seed-reproducible dungeon with biome-themed rooms, roaming enemies with rolled AI traits, environmental hazards, and an optional fog-of-war layer that limits visibility to a torch radius around the player.
 
-## Running it
-
-Double-click `index.html`, or open it in any modern browser. That's it.
+Open `index.html` in a browser to play — no build step, no server required.
 
 ## Controls
 
-| Key            | Action              |
-|----------------|---------------------|
-| Arrows / WASD  | Move                |
-| Space          | Attack (sword)      |
-| F              | Fire bow            |
-| Shift          | Raise shield        |
-| B              | Place bomb          |
-| E              | Dash (once found)   |
-| M              | Mute/unmute audio   |
+| Input | Action |
+|---|---|
+| Arrow keys / WASD | Move |
+| Space | Attack (sword) |
+| Shift | Raise shield |
+| B | Place bomb |
+| E | Dash |
+| R | Fire hookshot |
+| K | Debug: clear current room |
+| I | Debug: toggle invincibility |
+| Y | Debug: warp to boss room |
+| H | Debug: return to start room |
+| 1 / 2 / 3 / 4 | Debug: warp to adjacent room (N/E/S/W) |
 
-Debug keys:
+The right-hand sidebar mirrors most debug actions as buttons/toggles (Clear room, Warp to boss/start, Invincibility, Unlock all, Adaptive difficulty, Force fog) for mouse/touch use, plus a live run-stats panel and minimap.
 
-| Key | Action                              |
-|-----|--------------------------------------|
-| K   | Kill all enemies in current room     |
-| I   | Toggle invincibility                 |
-| L   | Grant bow + bomb bag + dash + infinite ammo |
-| Y   | Warp to the boss room                |
+## Core systems
 
-## Project structure
+**Dungeon generation** (`dungeon-generation.js`) — Rooms are grown outward from a start room via a randomized flood-fill, then one dead-end room is designated the boss room (with its approach doors locked), another becomes the item room, a random reachable room becomes the key room, and a secret room is attached behind a cracked wall. Every room independently rolls a biome, obstacle layout, pit hazards, decor, and enemies. Everything is driven by a single seedable RNG (`utils.js`), so a given seed always reproduces the same dungeon — pass one via `?seed=<number>` in the URL, or read the current run's seed off the HUD.
 
-The game logic is split into 9 scripts, loaded by `index.html` in dependency order (classic `<script>` tags sharing one global scope — no bundler, no modules):
+**Biomes** (`config.js`) — 13 biome presets (Stone, Roots, Ice, Lava, Desert, Cave, Graveyard, Alien, Island, Temple, Neon, Factory), each with its own floor/wall art, ambient particle behavior, and fog tint. Assigned per-room at generation time.
 
-| File            | Contents                                                                 |
-|-----------------|---------------------------------------------------------------------------|
-| `audio.js`      | `SFX` — synthesized WebAudio sound effects (no audio files/assets). Self-contained, no dependencies |
-| `config.js`     | `CONFIG` (all tunable gameplay/visual numbers), `COLORS`, `BIOMES`, derived canvas/room constants |
-| `utils.js`      | Generic helpers (`clamp`, `lerp`, `dist`, weighted-random pickers, etc.) and `biomeFor()` |
-| `dungeon-gen.js`| `generateDungeon()` — builds the room/door graph for a run                |
-| `room.js`       | `buildRoomInstance()` — per-room runtime state (obstacles, decor, enemy spawns) |
-| `state.js`      | Canvas/DPR setup, core game state (`player`, `dungeon`, etc.), `newGame()`, keyboard input |
-| `combat.js`     | Attack, bomb, bow, and shield logic                                       |
-| `update.js`     | The per-frame update pass (movement, enemy AI, projectiles, room-clear checks, debug keys) |
-| `render.js`     | All canvas drawing, including the ambient per-biome particle system       |
-| `main.js`       | HUD (hearts, resources, minimap, biome label) and the main `requestAnimationFrame` loop |
+**Enemies & AI** (`dungeon-enemy-ai.js`, `dungeon-generation.js`) — Chasers, turrets, and bosses, each optionally rolling a **personality** (`hunter` — leads its aim/movement toward the player; `camper` — holds range) and a **skill** (`explosive` — kamikaze rush/lobbed bombs/AoE slam; `radial` — ranged lash/ring bursts), with roll chance increasing by room depth.
 
-Because everything shares one global scope, load order in `index.html` matters — each file assumes the ones before it have already run.
+**Adaptive difficulty** (`dungeon-adaptive.js`) — Tracks a rolling skill estimate from per-room damage taken, clear time, and bomb/dash usage, plus a penalty on death. The result scales enemy HP/speed/turret cadence by up to ±20% (bosses damped to 40% of the swing). Persists across retries within a session; only resets on a full page reload. Toggle via the sidebar or `CONFIG.adaptive.enabled`.
 
-## Skill pickups
+**Pits** (`dungeon-generation.js`, `dungeon-player.js`) — Instant-death hazards in three shapes (ellipse, rect, moat-with-island), placed at generation time with a guaranteed-clear zone at room center. Excluded from start/item/secret rooms.
 
-The bow, bomb bag, and dash are each found once per run as a pickup sitting out in the open in a dedicated normal room — grabbable as soon as you enter, even before that room's fight is cleared. Dash (**E**) is a short burst of speed in the direction you're facing, with brief invulnerability while it's active, on a ~0.9s cooldown.
+**Fog of war** (`dungeon-generation.js`, `textures.js`, `dungeon-scene.js`, `dungeon-rooms.js`) — A subset of normal/boss/key rooms (`CONFIG.fog.roomChance`, seed-deterministic) are lit only by a fixed-radius torch around the player. Implemented as a single large pre-baked "veil" image — solid black outside the torch radius, soft-transparent within it — repositioned on the player every frame. No occlusion, no memory: only the current torch radius is ever visible, and stepping away re-darkens what you just lit. Use the sidebar's **Force fog** toggle to test the effect in any room regardless of the seed's actual dark-room roll; the browser console also logs which rooms in the current seed are dark.
 
-## Sidebar
+**Audio** (`audio.js`) — Fully procedural Web Audio synth (oscillators + filtered noise bursts), no external asset files. Includes a generative ambient pad + sparse plucked melody for the music toggle.
 
-To the left of the canvas, a sidebar shows:
-- **Run stats** — rooms visited, enemies defeated, bombs used, arrows fired, current depth, biome, and the live adaptive-difficulty factor.
-- **Config** — toggle switches for music, invincibility, and infinite ammo, plus "Clear room" and "Warp to boss" buttons.
+## Configuration
 
-The sidebar controls call the exact same functions as the K/I/L/Y hotkeys (`debugKillRoom()`, `debugSetGodmode()`, `debugSetInfiniteAmmo()`, `warpToBossRoom()` in `update.js`), and their toggle states stay in sync no matter which input method (keyboard or sidebar) was used last — all hotkeys still work as before.
+All tunable values live in `config.js` under `CONFIG`, grouped by system (`player`, `combat`, `hookshot`, `enemies`, `obstacles`, `pits`, `decor`, `rooms`, `items`, `effects`, `adaptive`, `fog`). Colors and per-biome presets (`COLORS`, `BIOMES`) live alongside it. Changing a value here doesn't require touching any other file.
 
-## Audio
+## File structure
 
-All sound is synthesized live via the Web Audio API in `audio.js` — there are no `.mp3`/`.wav` files to manage. Sounds are intentionally subtle: a low master gain, short soft-edged envelopes, and per-sound throttling so rapid repeated events (a flurry of hits, several turret shots at once) don't stack into a wall of noise. Press **M** to mute/unmute at any time.
+```
+index.html              Page shell, sidebar UI, script load order
+config.js                Tunable config, derived constants, colors, biomes
+utils.js                 Pure helpers: RNG, geometry, seed parsing
+audio.js                 Procedural SFX/music (Web Audio)
+textures.js               Procedurally-drawn Phaser textures (no image assets)
+dungeon-generation.js     Pure dungeon/room-content generation logic
+dungeon-scene.js          DungeonScene class: setup, main update loop
+dungeon-player.js         Movement, room transitions, damage, visual feedback
+dungeon-rooms.js          Per-room rebuild: walls, decor, chest, pits, fog
+dungeon-combat.js         Sword/bomb/hookshot combat logic
+dungeon-enemy-ai.js       Enemy movement/attack behavior by personality+skill
+dungeon-adaptive.js       Adaptive difficulty tracking and scaling
+dungeon-debug.js          Debug keys, sidebar wiring, HUD delegators
+ui-scene.js               UIScene: HUD, minimap, message overlay
+main.js                   Phaser.Game instantiation, sprite classes, sidebar wiring
+```
 
-Browsers block audio until a real user gesture; `audio.js` unlocks itself automatically on the player's first keypress or click, so no separate "click to enable sound" screen is needed.
+## Notes for future work
 
-## Rebalancing
-
-Nearly every gameplay number (movement speed, enemy stats, spawn weights, adaptive difficulty tuning, item drop rates, etc.) lives in the single `CONFIG` object at the top of `config.js`. Standard tweaks shouldn't require touching any other file.
+- Debug/QA affordances (godmode, unlock-all, force-fog, room warps) are intentionally left in the shipped build via the sidebar — remove or gate them behind a flag before treating this as a "real" release build.
+- The fog-of-war veil texture is generated once per page load, sized to the room's diagonal so it fully covers the room from any player position — if `CONFIG.canvas` dimensions change substantially, this recalculates automatically.
+- Everything procedurally generated (dungeon layout, enemy traits, pit/obstacle/decor placement, biome assignment, and now fog-of-war room selection) draws from the single seeded RNG in `utils.js`, so any new generation-time feature should do the same to keep `?seed=` reproducibility intact.

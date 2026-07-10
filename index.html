@@ -3,115 +3,257 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dungeon // dungeon crawler</title>
-<link rel="stylesheet" href="styles.css">
+<title>Dungeon // dungeon crawler (Phaser 4)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/4.2.0/phaser.min.js"></script>
+<style>
+  :root{
+    --bg: #12141c;
+    --panel: #1a1e2a;
+    --wall: #3a4256;
+    --wall-locked: #8a2b2b;
+    --wall-cracked: #55606e;
+    --wall-sealed: #c97a2b;
+    --floor: #20242f;
+    --floor-line: #262b39;
+    --accent: #4fd1c5;
+    --accent2: #f4d35e;
+    --danger: #e2555a;
+    --text: #d9dce3;
+    --muted: #6b7280;
+  }
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; height:100%; background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif; overflow:hidden;
+    -webkit-user-select:none; user-select:none;
+  }
+  #app{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    height:100%; gap:10px; padding:10px;
+  }
+  #title{
+    font-size:13px; letter-spacing:3px; text-transform:uppercase; color:var(--muted);
+  }
+  #main{
+    display:flex; flex-direction:row; align-items:stretch; gap:10px;
+  }
+  #sidebar{
+    width:220px;
+    background: var(--panel);
+    box-shadow: 0 0 0 2px #000, 0 10px 40px rgba(0,0,0,.6);
+    border-radius:6px;
+    padding:16px 14px;
+    display:flex;
+    flex-direction:column;
+    gap:20px;
+    overflow-y:auto;
+  }
+  .sb-section-title{
+    font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--muted);
+    padding-bottom:8px; margin-bottom:2px; border-bottom:1px solid #262b39;
+  }
+  .sb-stat-row{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:13px; padding:4px 0; color:var(--text);
+  }
+  .sb-stat-row .sb-label{ color:var(--muted); }
+  .sb-stat-row .sb-value{ font-weight:600; }
+  .sb-toggle-row{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:13px; padding:6px 0; color:var(--text);
+  }
+  .sb-switch{ position:relative; width:38px; height:20px; flex-shrink:0; }
+  .sb-switch input{ opacity:0; width:0; height:0; position:absolute; }
+  .sb-slider{
+    position:absolute; inset:0; background:#2a2f3d; border-radius:999px;
+    cursor:pointer; transition:background .15s;
+  }
+  .sb-slider::before{
+    content:''; position:absolute; width:14px; height:14px; left:3px; top:3px;
+    background:#7d8598; border-radius:50%; transition:transform .15s, background .15s;
+  }
+  .sb-switch input:checked + .sb-slider{ background:var(--accent); }
+  .sb-switch input:checked + .sb-slider::before{ transform:translateX(18px); background:#0b1410; }
+  .sb-btn{
+    display:block; width:100%; padding:10px 8px; margin-top:8px;
+    background:#20242f; border:1px solid #2a2f3d; border-radius:6px;
+    color:var(--text); font-size:12px; letter-spacing:1px; font-weight:600;
+    text-transform:uppercase; text-align:center; cursor:pointer;
+    font-family:inherit;
+    transition:background .15s, border-color .15s;
+  }
+  .sb-btn:first-child{ margin-top:0; }
+  .sb-btn:hover{ background:#262b39; border-color:var(--accent); }
+  .sb-btn:active{ transform:translateY(1px); }
+  #stage{
+    position:relative;
+    box-shadow: 0 0 0 2px #000, 0 10px 40px rgba(0,0,0,.6);
+    border-radius:6px; overflow:hidden;
+    width: min(94vw, 82vh * (1200/900));
+    aspect-ratio: 1200 / 900;
+    flex-shrink:0;
+  }
+  #game{
+    position:absolute; inset:0; width:100%; height:100%; background: var(--bg);
+  }
+  #game canvas{ display:block; width:100% !important; height:100% !important; }
+  /* HUD and message overlay are rendered by Phaser (see UIScene); the
+     minimap is plain HTML/CSS, built by UIScene.setMinimap() into
+     #minimap-container so it can live in the right sidebar, outside the
+     game canvas. */
+  #hint{
+    font-size:12px; color: var(--muted); letter-spacing:1px;
+  }
+  #sidebar-right{
+    width:220px;
+    background: var(--panel);
+    box-shadow: 0 0 0 2px #000, 0 10px 40px rgba(0,0,0,.6);
+    border-radius:6px;
+    padding:16px 14px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    overflow-y:auto;
+  }
+  #minimap-wrap{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:6px 0 4px;
+  }
+  #minimap-container{
+    display:grid;
+    gap:5px;
+  }
+  .mm-cell{
+    width:32px;
+    height:32px;
+    border-radius:4px;
+    transition: background-color .15s;
+  }
+  .mm-cell.mm-current{
+    box-shadow: 0 0 0 2px #0b1410, 0 0 8px 1px var(--accent);
+  }
+  #minimap-legend{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    font-size:11px;
+    color:var(--muted);
+  }
+  #minimap-legend .mm-legend-row{
+    display:flex; align-items:center; gap:8px;
+  }
+  #minimap-legend .mm-swatch{
+    width:12px; height:12px; border-radius:3px; flex-shrink:0;
+  }
+</style>
 </head>
 <body>
 <div id="app">
-  <div id="title">Generated dungeon &mdash; initial prototype</div>
-  <div id="gameRow">
+  <div id="title">Generated dungeon &mdash; Phaser 4 port</div>
+  <div id="main">
     <div id="sidebar">
-      <div class="panel-section">
-        <h3>Run Stats</h3>
-        <div class="stat-row"><span>Rooms visited</span><span id="statRooms">0</span></div>
-        <div class="stat-row"><span>Enemies defeated</span><span id="statKills">0</span></div>
-        <div class="stat-row"><span>Bombs used</span><span id="statBombs">0</span></div>
-        <div class="stat-row"><span>Arrows fired</span><span id="statArrows">0</span></div>
-        <div class="stat-row"><span>Dashes used</span><span id="statDashes">0</span></div>
-        <div class="stat-row"><span>Jumps used</span><span id="statJumps">0</span></div>
-        <div class="stat-row"><span>Depth</span><span id="statDepth">0</span></div>
-        <div class="stat-row"><span>Biome</span><span id="statBiome">&mdash;</span></div>
-        <div class="stat-row"><span>Difficulty</span><span id="statDifficulty">&mdash;</span></div>
+      <div class="sb-section">
+        <div class="sb-section-title">Run Stats</div>
+        <div class="sb-stat-row"><span class="sb-label">Rooms visited</span><span class="sb-value" id="stat-rooms">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Enemies defeated</span><span class="sb-value" id="stat-enemies">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Bombs used</span><span class="sb-value" id="stat-bombs">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Arrows fired</span><span class="sb-value" id="stat-arrows">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Dashes used</span><span class="sb-value" id="stat-dashes">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Jumps used</span><span class="sb-value" id="stat-jumps">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Depth</span><span class="sb-value" id="stat-depth">0</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Biome</span><span class="sb-value" id="stat-biome">&mdash;</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Difficulty</span><span class="sb-value" id="stat-difficulty">0.00</span></div>
+        <div class="sb-stat-row"><span class="sb-label">Adaptive skill</span><span class="sb-value" id="stat-adaptive">0.00 (x1.00)</span></div>
       </div>
-      <div class="panel-section">
-        <h3>Config</h3>
-        <div class="toggle-row">
-          <span>Music</span>
-          <label class="switch">
-            <input type="checkbox" id="toggleMusic" checked>
-            <span class="slider"></span>
+      <div class="sb-section">
+        <div class="sb-section-title">Config</div>
+        <div class="sb-toggle-row">
+          <span class="sb-label">Music</span>
+          <label class="sb-switch">
+            <input type="checkbox" id="cfg-music">
+            <span class="sb-slider"></span>
           </label>
         </div>
-        <div class="toggle-row">
-          <span>Invincibility</span>
-          <label class="switch">
-            <input type="checkbox" id="toggleGod">
-            <span class="slider"></span>
+        <div class="sb-toggle-row">
+          <span class="sb-label">Sound effects</span>
+          <label class="sb-switch">
+            <input type="checkbox" id="cfg-sfx">
+            <span class="sb-slider"></span>
           </label>
         </div>
-        <div class="toggle-row">
-          <span>Unlock all</span>
-          <label class="switch">
-            <input type="checkbox" id="toggleUnlockAll">
-            <span class="slider"></span>
+        <div class="sb-toggle-row">
+          <span class="sb-label">Invincibility</span>
+          <label class="sb-switch">
+            <input type="checkbox" id="cfg-invincible">
+            <span class="sb-slider"></span>
           </label>
         </div>
-        <button class="sidebar-btn" id="btnClearRoom">Clear room</button>
-        <button class="sidebar-btn" id="btnWarpBoss">Warp to boss</button>
-        <button class="sidebar-btn" id="btnWarpStart">Warp to start</button>
+        <div class="sb-toggle-row">
+          <span class="sb-label">Unlock all</span>
+          <label class="sb-switch">
+            <input type="checkbox" id="cfg-unlock">
+            <span class="sb-slider"></span>
+          </label>
+        </div>
+        <div class="sb-toggle-row">
+          <span class="sb-label">Adaptive difficulty</span>
+          <label class="sb-switch">
+            <input type="checkbox" id="cfg-adaptive">
+            <span class="sb-slider"></span>
+          </label>
+        </div>
+        <div class="sb-toggle-row">
+          <span class="sb-label">Force fog (debug)</span>
+          <label class="sb-switch">
+            <input type="checkbox" id="cfg-fog-test">
+            <span class="sb-slider"></span>
+          </label>
+        </div>
       </div>
-      <div class="panel-section">
-        <h3>Warp to Puzzle</h3>
-        <button class="sidebar-btn" id="btnWarpPush">Push puzzle</button>
-        <button class="sidebar-btn" id="btnWarpSwitch">Switch puzzle</button>
-        <button class="sidebar-btn" id="btnWarpDetonate">Detonate puzzle</button>
-        <button class="sidebar-btn" id="btnWarpSnipe">Snipe puzzle</button>
-        <button class="sidebar-btn" id="btnWarpRush">Rush puzzle</button>
+      <div class="sb-section">
+        <button class="sb-btn" id="btn-clear-room">Clear room</button>
+        <button class="sb-btn" id="btn-warp-boss">Warp to boss</button>
+        <button class="sb-btn" id="btn-warp-start">Warp to start</button>
       </div>
     </div>
     <div id="stage">
-      <canvas id="game" width="1200" height="900"></canvas>
-      <div id="hud">
-        <div>
-          <div id="hearts"></div>
-          <div id="resources">
-            <div class="res-item" id="bombWrap" style="display:none;">
-              <svg width="16" height="16"><circle cx="8" cy="8" r="7" fill="#111" stroke="var(--accent2)" stroke-width="2"/></svg>
-              <span id="bombCount">0</span>
-            </div>
-            <div class="res-item" id="arrowWrap" style="display:none;">
-              <svg width="16" height="16"><line x1="3" y1="13" x2="13" y2="3" stroke="var(--accent2)" stroke-width="2"/><polygon points="13,3 8,4 12,8" fill="var(--accent2)"/></svg>
-              <span id="arrowCount">0</span>
-            </div>
-            <div class="res-item" id="keyWrap" style="display:none;">
-              <svg width="16" height="16"><circle cx="6" cy="6" r="4" fill="none" stroke="var(--accent2)" stroke-width="2"/><rect x="9" y="5" width="6" height="2.4" fill="var(--accent2)"/></svg>
-              <span>key</span>
-            </div>
-            <div class="res-item" id="godWrap" style="display:none;">
-              <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="#f4d35e" stroke-width="2" stroke-dasharray="3 2"/></svg>
-              <span style="color:#f4d35e; letter-spacing:1px; text-transform:uppercase; font-size:11px;">invincible</span>
-            </div>
-            <div class="res-item" id="dashWrap" style="display:none;">
-              <svg width="16" height="16"><path d="M2 3 L9 8 L2 13 M7 3 L14 8 L7 13" fill="none" stroke="var(--accent2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <span id="dashStatus">ready</span>
-            </div>
-            <div class="res-item" id="jumpWrap" style="display:none;">
-              <svg width="16" height="16"><path d="M8 13 L8 4 M4 7 L8 3 L12 7" fill="none" stroke="var(--jump-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <span id="jumpStatus">ready</span>
-            </div>
-          </div>
+      <div id="game"></div>
+    </div>
+    <div id="sidebar-right">
+      <div class="sb-section">
+        <div class="sb-section-title">Minimap</div>
+        <div id="minimap-wrap">
+          <div id="minimap-container"></div>
         </div>
-        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
-          <div id="biomeLabel" style="font-size:12px; font-weight:600; letter-spacing:2.5px; text-transform:uppercase; padding:3px 8px; background:rgba(8,10,16,.75); border:1px solid rgba(255,255,255,0.09); border-radius:4px; text-shadow:0 1px 4px rgba(0,0,0,.6);"></div>
-          <div id="minimap"></div>
+        <div id="minimap-legend">
+          <div class="mm-legend-row"><span class="mm-swatch" style="background:#4fd1c5"></span>You are here</div>
+          <div class="mm-legend-row"><span class="mm-swatch" style="background:#3a4256"></span>Visited</div>
+          <div class="mm-legend-row"><span class="mm-swatch" style="background:#f4d35e"></span>Item / key / secret</div>
+          <div class="mm-legend-row"><span class="mm-swatch" style="background:#e2555a"></span>Boss</div>
+          <div class="mm-legend-row"><span class="mm-swatch" style="background:#232838"></span>Unvisited</div>
         </div>
       </div>
-      <div id="msg"><div id="msgText"></div><span id="msgSub"></span></div>
-      <button id="restart">Retry</button>
     </div>
   </div>
-  <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; F: fire bow &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; E: dash &nbsp;&middot;&nbsp; J: jump (over holes/projectiles) &nbsp;&middot;&nbsp; M: mute audio &nbsp;&middot;&nbsp; walk into blocks to push them onto plates &nbsp;&middot;&nbsp; attack pedestals to repeat their sequence &nbsp;&middot;&nbsp; dash between timed plates before they fade &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; L: debug unlock all (bow + bomb bag + dash + jump + key + infinite ammo) &nbsp;&middot;&nbsp; P: debug solve puzzle &nbsp;&middot;&nbsp; Y: debug warp to boss &nbsp;&middot;&nbsp; H: debug warp to start</span></div>
+  <div id="hint">arrows / WASD: move &nbsp;&middot;&nbsp; space: attack (sword) &nbsp;&middot;&nbsp; shift: shield &nbsp;&middot;&nbsp; B: bomb &nbsp;&middot;&nbsp; E: dash &nbsp;&middot;&nbsp; R: hookshot &nbsp;&middot;&nbsp; <span style="opacity:.6">K: debug kill room &nbsp;&middot;&nbsp; I: debug invincibility &nbsp;&middot;&nbsp; Y: debug warp to boss &nbsp;&middot;&nbsp; H: return to start room &nbsp;&middot;&nbsp; 1/2/3/4: warp to adjacent room (N/E/S/W)</span></div>
 </div>
 
-<script src="audio.js"></script>
 <script src="config.js"></script>
+<script src="audio.js"></script>
 <script src="utils.js"></script>
-<script src="dungeon-gen.js"></script>
-<script src="room.js"></script>
-<script src="state.js"></script>
-<script src="combat.js"></script>
-<script src="update.js"></script>
-<script src="render.js"></script>
+<script src="dungeon-generation.js"></script>
+<script src="textures.js"></script>
+<script src="dungeon-scene.js"></script>
+<script src="dungeon-enemy-ai.js"></script>
+<script src="dungeon-rooms.js"></script>
+<script src="dungeon-combat.js"></script>
+<script src="dungeon-player.js"></script>
+<script src="dungeon-debug.js"></script>
+<script src="dungeon-adaptive.js"></script>
+<script src="ui-scene.js"></script>
 <script src="main.js"></script>
+
 </body>
 </html>
