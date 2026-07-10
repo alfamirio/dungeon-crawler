@@ -86,12 +86,15 @@ const SFX = (function(){
     src.stop(t0 + duration + 0.02);
   }
 
-  // ---- Slow, evolving ambient pad + chord-aware plucks for the Music toggle ----
+  // ---- Ambient pad + chord-aware plucks for the Music toggle ----
   // The pad is 4 persistent, individually filtered + panned voices that glide
   // between chords (no retriggering, so there's never a hard edge) over a
-  // 6-chord progression with real harmonic movement (i-VI-III-VII-iv-v in Am)
-  // rather than a two-chord loop. A sparse plucked melody layers on top,
-  // drawn from whichever chord is currently sounding so it always harmonizes.
+  // 6-chord progression with real harmonic movement (i-VI-III-VII-iv-v in Am),
+  // cycling at a brisker pace than a typical ambient loop for a more
+  // "on the move" feel. A chord-aware plucked melody layers on top (with
+  // occasional rising 3-note flourishes), and a quiet low pulse on the
+  // downbeat gives a sense of forward motion — all still kept deliberately
+  // quiet/subtle so it sits under the action rather than announcing itself.
   // A shared, lazily-built reverb+delay send (ensureMusicFx) gives both
   // layers a soft sense of space without touching the SFX bus.
   const CHORD_PROGRESSION = [
@@ -190,9 +193,11 @@ const SFX = (function(){
       return { osc, filtLfo, gLfo };
     });
 
-    musicState = { voices, chordIndex: 0, chordTimer: null, pluckTimer: null, lastPluckIdx: -1 };
+    musicState = { voices, chordIndex: 0, chordTimer: null, pluckTimer: null, pulseTimer: null, lastPluckIdx: -1 };
 
-    // Glide to the next chord in the progression every ~22s, over a slow ~6s crossfade
+    // Glide to the next chord every ~14s over a brisker ~3.5s crossfade —
+    // quicker harmonic motion than before, while each glide is still smooth
+    // enough to stay a "pad" rather than a hard cut.
     musicState.chordTimer = setInterval(() => {
       if(!musicState) return;
       musicState.chordIndex = (musicState.chordIndex + 1) % CHORD_PROGRESSION.length;
@@ -201,22 +206,27 @@ const SFX = (function(){
       musicState.voices.forEach((v, i) => {
         v.osc.frequency.cancelScheduledValues(t0);
         v.osc.frequency.setValueAtTime(v.osc.frequency.value, t0);
-        v.osc.frequency.exponentialRampToValueAtTime(nextChord[i], t0 + 6);
+        v.osc.frequency.exponentialRampToValueAtTime(nextChord[i], t0 + 3.5);
       });
-    }, 22000);
+    }, 14000);
 
     scheduleNextPluck();
+
+    // Quiet, steady low pulse under the pad — felt more than heard — that
+    // gives the piece a sense of forward motion/travel ("adventurous")
+    // without adding volume or losing the ambient, subtle character.
+    musicState.pulseTimer = setInterval(() => { if(musicState) playBassPulse(); }, 1400);
 
     musicBus.gain.cancelScheduledValues(c.currentTime);
     musicBus.gain.setValueAtTime(musicBus.gain.value, c.currentTime);
     musicBus.gain.linearRampToValueAtTime(1, c.currentTime + 1.5);
   }
 
-  // Schedules one soft plucked note at a randomized interval so the melody
-  // feels generative/organic rather than looped.
+  // Schedules one soft plucked note (or occasional flourish) at a randomized
+  // interval so the melody feels generative/organic rather than looped.
   function scheduleNextPluck(){
     if(!musicState) return;
-    const delay = 3800 + Math.random() * 5200; // ~3.8-9s between notes
+    const delay = 2200 + Math.random() * 3200; // ~2.2-5.4s between notes — brisker, more active
     musicState.pluckTimer = setTimeout(() => {
       if(!musicState) return;
       playPluck();
@@ -224,18 +234,34 @@ const SFX = (function(){
     }, delay);
   }
 
-  function playPluck(){
+  // A quiet, low, felt-more-than-heard pulse on the current chord's root,
+  // an octave under the pad — the steady "footsteps" that make the piece
+  // feel like it's going somewhere rather than just hanging in the air.
+  function playBassPulse(){
     if(!ctx || !musicState) return;
     const fx = ensureMusicFx(ctx);
-    const scale = PLUCK_SCALES[musicState.chordIndex];
-    // pick a note from the *current* chord so the melody always harmonizes,
-    // nudging away from an immediate repeat of the last note
-    let idx = Math.floor(Math.random() * scale.length);
-    if(idx === musicState.lastPluckIdx) idx = (idx + 1) % scale.length;
-    musicState.lastPluckIdx = idx;
-    const freq = scale[idx];
-
+    const root = CHORD_PROGRESSION[musicState.chordIndex][0] / 2;
     const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = root;
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'lowpass';
+    filt.frequency.value = 260;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.045, t0 + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+    osc.connect(filt).connect(g);
+    g.connect(fx.dry); g.connect(fx.wetSend);
+    osc.start(t0);
+    osc.stop(t0 + 0.55);
+  }
+
+  // Synths a single pluck note at time-offset `delay` from now; shared by
+  // both single plucks and the rising flourish runs below.
+  function playPluckNote(freq, fx, delay, gainScale){
+    const t0 = ctx.currentTime + delay;
     const osc = ctx.createOscillator();
     osc.type = 'triangle';
     osc.frequency.value = freq;
@@ -246,8 +272,8 @@ const SFX = (function(){
 
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.07, t0 + 0.03);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.2);
+    g.gain.exponentialRampToValueAtTime(0.07 * gainScale, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.4);
     const g2 = ctx.createGain();
     g2.gain.value = 0.25; // shimmer voice sits well under the main tone
 
@@ -259,8 +285,34 @@ const SFX = (function(){
     if(pan){ g.connect(pan); pan.connect(fx.dry); pan.connect(fx.wetSend); pan.connect(fx.delay); }
     else { g.connect(fx.dry); g.connect(fx.wetSend); g.connect(fx.delay); }
 
-    osc.start(t0); osc.stop(t0 + 3.3);
-    osc2.start(t0); osc2.stop(t0 + 3.3);
+    osc.start(t0); osc.stop(t0 + 2.5);
+    osc2.start(t0); osc2.stop(t0 + 2.5);
+  }
+
+  function playPluck(){
+    if(!ctx || !musicState) return;
+    const fx = ensureMusicFx(ctx);
+    const scale = PLUCK_SCALES[musicState.chordIndex];
+
+    // ~30% of the time, fire a quick rising 3-note run instead of a single
+    // note — a small "questing" flourish that reads as more adventurous
+    // than a single sustained pluck, without raising the overall volume.
+    if(Math.random() < 0.3){
+      const startIdx = Math.floor(Math.random() * 2);
+      const i1 = startIdx, i2 = Math.min(startIdx + 1, scale.length - 1), i3 = Math.min(startIdx + 2, scale.length - 1);
+      playPluckNote(scale[i1], fx, 0, 0.85);
+      playPluckNote(scale[i2], fx, 0.1, 0.85);
+      playPluckNote(scale[i3], fx, 0.2, 1);
+      musicState.lastPluckIdx = i3;
+      return;
+    }
+
+    // pick a note from the *current* chord so the melody always harmonizes,
+    // nudging away from an immediate repeat of the last note
+    let idx = Math.floor(Math.random() * scale.length);
+    if(idx === musicState.lastPluckIdx) idx = (idx + 1) % scale.length;
+    musicState.lastPluckIdx = idx;
+    playPluckNote(scale[idx], fx, 0, 1);
   }
 
   function stopMusic(){
@@ -271,6 +323,7 @@ const SFX = (function(){
     musicBus.gain.linearRampToValueAtTime(0, t0 + 0.8);
     clearInterval(musicState.chordTimer);
     clearTimeout(musicState.pluckTimer);
+    clearInterval(musicState.pulseTimer);
     const voices = musicState.voices;
     musicState = null;
     setTimeout(() => {
