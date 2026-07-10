@@ -266,6 +266,36 @@ Object.assign(DungeonScene.prototype, {
     this.rebuildWalls();
   },
 
+  // ---------- Fog of war ----------
+  // Called once per room entry (enterRoom), same slot as rebuildPits/rebuildDecor.
+  // Just flips the darkness veil on/off for this room and, if it's on,
+  // snaps it to the player immediately so there's no one-frame flash of it
+  // sitting at its default position before updateFogOfWar() catches up.
+  rebuildFog(inst){
+    const on = !!(CONFIG.fog.enabled && (inst.meta.dark || this.forceFogActive));
+    this.fogActive = on;
+    this.fogVeilSprite.setVisible(on);
+    if(on) this.updateFogOfWar();
+  },
+
+  // Called every frame from stepGame() while the current room is dark.
+  // Just repositions the pre-baked veil image (see buildFogVeil in
+  // textures.js) on top of the player — no per-frame redraw/erase, so this
+  // is essentially free. The scale wobble is a cosmetic torch flicker; since
+  // the veil's black region extends far past the room on every side, a few
+  // percent of scale never exposes its outer edge.
+  updateFogOfWar(){
+    if(!this.fogActive) return;
+    const p = this.playerSprite;
+    const cfg = CONFIG.fog;
+    let scale = 1;
+    if(cfg.flicker && cfg.flicker.enabled){
+      const t = (this.time.now / 1000) * cfg.flicker.speedHz * Math.PI * 2;
+      scale = 1 + (Math.sin(t) * cfg.flicker.amplitude) / cfg.radius;
+    }
+    this.fogVeilSprite.setPosition(p.x, p.y).setScale(scale);
+  },
+
   // ---------- Ambient atmosphere particles, reconfigured per biome on room entry ----------
   seedAmbient(biome){
     // Per-biome motion/appearance lives on the biome data itself (config.js)

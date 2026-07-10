@@ -88,6 +88,11 @@ musicChk.addEventListener('change', (e) => {
   SFX.unlock(); SFX.uiClick();
   SFX.setMusic(e.target.checked);
 });
+const fogTestChk = document.getElementById('cfg-fog-test');
+fogTestChk.addEventListener('change', (e) => {
+  SFX.unlock(); SFX.uiClick();
+  if(DUNGEON_SCENE) DUNGEON_SCENE.setForceFog(e.target.checked);
+});
 const sfxChk = document.getElementById('cfg-sfx');
 sfxChk.checked = true; // effects on by default
 sfxChk.addEventListener('change', (e) => {

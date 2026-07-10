@@ -188,6 +188,23 @@ const CONFIG = {
     },
     // Expected clear time baseline (seconds) used to normalize the time score
     expectedClearSeconds: { base: 12, perEnemy: 4 }
+  },
+  // ---- Fog of war: some rooms are lit only by a fixed-radius torch around
+  // the player. Rolled once per room at generation time (dungeon-generation.js,
+  // seed-deterministic via rand(), same pattern as pits.roomChance), stored
+  // as meta.dark. No "explored memory" — only the current torch radius is
+  // ever visible; step away from an area and it goes dark again. Rendered
+  // via a RenderTexture that's fully re-filled black and re-punched with a
+  // soft torch mask every frame (see rebuildFog/updateFogOfWar/drawFogAt in
+  // dungeon-rooms.js) — never touches layout, enemies, or pits themselves,
+  // only what's visible of them.
+  fog: {
+    enabled: true,
+    roomChance: 0.35,
+    eligibleTypes: ['normal', 'boss', 'key'], // start/item/secret stay excluded, like pits
+    radius: 170,     // fully-visible core, in room-local pixels
+    softness: 70,    // feathered falloff band beyond the core
+    flicker: { enabled: true, amplitude: 6, speedHz: 0.6 } // cosmetic torch waver
   }
 };
 

@@ -49,6 +49,7 @@ Object.assign(DungeonScene.prototype, {
     this.rebuildDecor(inst);
     this.rebuildChest(inst);
     this.rebuildPits(inst);
+    this.rebuildFog(inst);
   },
 
   moveToRoom(nx, ny, entrySide){

@@ -49,6 +49,16 @@ Object.assign(DungeonScene.prototype, {
     this.setGodmodeVisual(on);
   },
 
+  // Forces the CURRENT room's fog-of-war on regardless of meta.dark (sidebar
+  // "Force fog" switch) — pure debug/QA aid so a dark room doesn't have to be
+  // found by chance to test the mechanic. Doesn't touch meta.dark itself, so
+  // it has no effect on which rooms are "really" dark on future room entries;
+  // re-applied automatically on room entry via rebuildFog() while active.
+  setForceFog(on){
+    this.forceFogActive = on;
+    this.rebuildFog(this.curInst());
+  },
+
   // Unlocks every locked door in the dungeon (sidebar "Unlock all" switch).
   // One-way cheat: turning the switch back off does not re-lock doors.
   setUnlockAll(on){

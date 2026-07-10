@@ -106,6 +106,14 @@ function generateDungeon(){
   let maxDist = 0;
   for(const [, r] of rooms){ if(r.dist > maxDist) maxDist = r.dist; }
 
+  // Fog of war: rolled last, after every room's final type is settled
+  // (boss/item/key/secret reassignments above all happen before this point),
+  // so eligibleTypes checks against the type the room actually ends up with.
+  const fc = CONFIG.fog;
+  for(const [, r] of rooms){
+    r.dark = fc.enabled && fc.eligibleTypes.includes(r.type) && rand() < fc.roomChance;
+  }
+
   return { rooms, doors, maxDist };
 }
 

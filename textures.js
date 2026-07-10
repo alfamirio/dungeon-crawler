@@ -499,6 +499,36 @@ function buildTextures(scene){
     g.strokePath();
   });
 
+  // Fog-of-war darkness veil: ONE large pre-baked image, black outside the
+  // torch radius and smoothly transparent within it (punched out via the
+  // Canvas2D 'destination-out' composite op — a plain browser API, not a
+  // Phaser/WebGL feature). It's just drawn as a normal alpha-blended Image
+  // centered on the player every frame (see updateFogOfWar() in
+  // dungeon-rooms.js) — deliberately avoids RenderTexture/erase/masks
+  // entirely so it behaves the same on every renderer.
+  // Sized to the room's diagonal (+ margin) so it fully covers the room no
+  // matter where in it the player is standing when centered on them.
+  (function buildFogVeil(){
+    const fc = CONFIG.fog;
+    const half = Math.ceil(Math.sqrt(ROOM_W * ROOM_W + ROOM_H * ROOM_H)) + 60;
+    const size = half * 2;
+    const canvasTex = scene.textures.createCanvas('tex_fog_veil', size, size);
+    const ctx = canvasTex.getContext();
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, size, size);
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    const grad = ctx.createRadialGradient(half, half, Math.max(0, fc.radius - fc.softness * 0.4), half, half, fc.radius + fc.softness);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(half, half, fc.radius + fc.softness, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    canvasTex.refresh();
+  })();
+
   // HUD icons, reused by UIScene
   mk('tex_hud_heart', 16, 16, g => {
     g.fillStyle(0xffffff, 1);

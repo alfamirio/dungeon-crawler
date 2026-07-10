@@ -58,6 +58,16 @@ class DungeonScene extends Phaser.Scene {
     this.fogRect = this.add.rectangle(WALL + ROOM_W / 2, WALL + ROOM_H / 2, ROOM_W, ROOM_H, 0xffffff, 0).setDepth(6).setAlpha(0);
     this.fogTween = null;
 
+    // Fog-of-war darkness layer for rooms flagged meta.dark (see
+    // dungeon-generation.js). A single large pre-baked veil image (see
+    // buildFogVeil() in textures.js) is centered on the player every frame
+    // (updateFogOfWar() in dungeon-rooms.js) — plain alpha-blended Image,
+    // no RenderTexture/erase/mask involved. Sits above the biome fog tint
+    // but below the hit/explosion particle burst layer, so flashes still
+    // read through the dark.
+    this.fogVeilSprite = this.add.image(WALL + ROOM_W / 2, WALL + ROOM_H / 2, 'tex_fog_veil').setDepth(6.5).setVisible(false);
+    this.fogActive = false;
+
     // Subtle vignette via Phaser's camera filter (external = whole-screen effects)
     this.cameras.main.filters.external.addVignette(0.5, 0.5, 0.9, 0.2, 0x000000);
 
@@ -225,6 +235,8 @@ class DungeonScene extends Phaser.Scene {
     this._activeEnemies = null;
 
     this.dungeon = generateDungeon();
+    const darkRooms = [...this.dungeon.rooms.values()].filter(r => r.dark).map(r => `(${r.x},${r.y})`);
+    console.log('dark rooms this seed:', darkRooms.length ? darkRooms.join(' ') : '(none)');
     this.roomInstances = new Map();
     for(const [k, meta] of this.dungeon.rooms){
       const inst = buildRoomInstance(meta);
@@ -276,6 +288,9 @@ class DungeonScene extends Phaser.Scene {
     this.unlockAllActive = false;
     const unlockChk = document.getElementById('cfg-unlock');
     if(unlockChk) unlockChk.checked = false;
+    this.forceFogActive = false;
+    const fogTestChk = document.getElementById('cfg-fog-test');
+    if(fogTestChk) fogTestChk.checked = false;
 
     this.enterRoom();
     this.seedAmbient(this.biomeNow());
@@ -309,6 +324,7 @@ class DungeonScene extends Phaser.Scene {
 
     this.handleMovement(dt);
     this.updateTailVisual();
+    this.updateFogOfWar();
     this.handleSword(dt);
     this.handleShield();
     this.handleBombs();
