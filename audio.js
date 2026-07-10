@@ -15,6 +15,7 @@ const SFX = (function(){
   let musicOn = false;
   let sfxOn = true;
   let musicState = null;
+  let musicFx = null;  // shared reverb/delay send bus for the music layer, built lazily
   let noiseBuffer = null;
 
   function ensureCtx(){
@@ -85,45 +86,113 @@ const SFX = (function(){
     src.stop(t0 + duration + 0.02);
   }
 
-  // ---- Slow, evolving ambient pad + sparse pentatonic plucks for the Music toggle ----
-  // The pad is 3 persistent voices that glide between chords (no retriggering,
-  // so there's never a hard edge) over a gentle open-fifth progression. A
-  // sparse, randomly-timed plucked melody layers on top for interest.
+  // ---- Slow, evolving ambient pad + chord-aware plucks for the Music toggle ----
+  // The pad is 4 persistent, individually filtered + panned voices that glide
+  // between chords (no retriggering, so there's never a hard edge) over a
+  // 6-chord progression with real harmonic movement (i-VI-III-VII-iv-v in Am)
+  // rather than a two-chord loop. A sparse plucked melody layers on top,
+  // drawn from whichever chord is currently sounding so it always harmonizes.
+  // A shared, lazily-built reverb+delay send (ensureMusicFx) gives both
+  // layers a soft sense of space without touching the SFX bus.
   const CHORD_PROGRESSION = [
-    [110.00, 164.81, 220.00], // A2 E3 A3 — Am, open voicing
-    [98.00, 146.83, 196.00],  // G2 D3 G3 — G, open voicing
-    [130.81, 196.00, 261.63], // C3 G3 C4 — C, open voicing
-    [87.31, 130.81, 174.61]   // F2 C3 F3 — F, open voicing
+    [110.00, 164.81, 220.00, 261.63], // Am     (A2 E3 A3 C4)
+    [87.31, 130.81, 174.61, 220.00],  // F      (F2 C3 F3 A3)
+    [130.81, 196.00, 261.63, 329.63], // C      (C3 G3 C4 E4)
+    [98.00, 146.83, 196.00, 246.94],  // G      (G2 D3 G3 B3)
+    [110.00, 174.61, 220.00, 261.63], // Dm/A   (A2 F3 A3 C4, iv color)
+    [98.00, 164.81, 196.00, 246.94]   // Em/G   (G2 E3 G3 B3, v color)
   ];
-  const PLUCK_SCALE = [220.00, 261.63, 293.66, 329.63, 392.00, 440.00]; // A minor pentatonic
+  // Per-chord note pool for the pluck melody (an octave above the pad, plus
+  // the root's 12th for a bit of extra range), index-matched to the chords above.
+  const PLUCK_SCALES = CHORD_PROGRESSION.map(chord => chord.map(f => f * 2).concat(chord[0] * 3));
+
+  // Builds a short synthetic impulse response (exponentially decaying noise)
+  // for a soft, plate-style reverb. Built once, lazily, on first playback.
+  function buildReverbImpulse(c){
+    const len = Math.floor(c.sampleRate * 2.2);
+    const impulse = c.createBuffer(2, len, c.sampleRate);
+    for(let ch = 0; ch < 2; ch++){
+      const data = impulse.getChannelData(ch);
+      for(let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.4);
+    }
+    return impulse;
+  }
+
+  // Shared send bus for the music layer: a dry path, a reverb (convolver)
+  // send/return, and a gentle feedback delay (plucks only, via fx.delay).
+  // All three ultimately land back on musicBus, so the existing Music
+  // toggle/fade still controls the whole thing as one layer.
+  function ensureMusicFx(c){
+    if(musicFx) return musicFx;
+    const dry = c.createGain(); dry.gain.value = 1;
+    dry.connect(musicBus);
+
+    const wetSend = c.createGain(); wetSend.gain.value = 0.55;
+    const convolver = c.createConvolver();
+    convolver.buffer = buildReverbImpulse(c);
+    const wetReturn = c.createGain(); wetReturn.gain.value = 0.5;
+    wetSend.connect(convolver).connect(wetReturn).connect(musicBus);
+
+    const delay = c.createDelay(1.0); delay.delayTime.value = 0.42;
+    const feedback = c.createGain(); feedback.gain.value = 0.28;
+    const delayFilter = c.createBiquadFilter(); delayFilter.type = 'lowpass'; delayFilter.frequency.value = 2200;
+    delay.connect(delayFilter).connect(feedback).connect(delay);
+    const delayReturn = c.createGain(); delayReturn.gain.value = 0.35;
+    delay.connect(delayReturn).connect(musicBus);
+
+    musicFx = { dry, wetSend, delay };
+    return musicFx;
+  }
 
   function startMusic(){
     const c = ensureCtx();
     if(!c || musicState) return;
+    const fx = ensureMusicFx(c);
+    const canPan = typeof c.createStereoPanner === 'function';
+    const panSpread = [-0.35, -0.12, 0.12, 0.35];
 
     const chord = CHORD_PROGRESSION[0];
     const voices = chord.map((freq, i) => {
       const osc = c.createOscillator();
       osc.type = 'sine';
       osc.frequency.value = freq;
+
+      // gentle lowpass per voice, slowly wandering so the pad's tone
+      // breathes instead of sitting at one static brightness
+      const filt = c.createBiquadFilter();
+      filt.type = 'lowpass';
+      filt.frequency.value = 900;
+      const filtLfo = c.createOscillator();
+      filtLfo.type = 'sine';
+      filtLfo.frequency.value = 0.03 + i * 0.007;
+      const filtLfoGain = c.createGain();
+      filtLfoGain.gain.value = 220;
+      filtLfo.connect(filtLfoGain).connect(filt.frequency);
+
       const g = c.createGain();
-      g.gain.value = 0.04;
+      g.gain.value = 0.035;
       // slow individual swell so the pad breathes instead of sitting static
-      const lfo = c.createOscillator();
-      lfo.type = 'sine';
-      lfo.frequency.value = 0.04 + i * 0.011;
-      const lfoGain = c.createGain();
-      lfoGain.gain.value = 0.045;
-      lfo.connect(lfoGain).connect(g.gain);
-      osc.connect(g).connect(musicBus);
-      osc.start();
-      lfo.start();
-      return { osc, lfo };
+      const gLfo = c.createOscillator();
+      gLfo.type = 'sine';
+      gLfo.frequency.value = 0.04 + i * 0.011;
+      const gLfoGain = c.createGain();
+      gLfoGain.gain.value = 0.045;
+      gLfo.connect(gLfoGain).connect(g.gain);
+
+      const pan = canPan ? c.createStereoPanner() : null;
+      if(pan) pan.pan.value = panSpread[i] || 0;
+
+      osc.connect(filt).connect(g);
+      if(pan){ g.connect(pan); pan.connect(fx.dry); pan.connect(fx.wetSend); }
+      else { g.connect(fx.dry); g.connect(fx.wetSend); }
+
+      osc.start(); filtLfo.start(); gLfo.start();
+      return { osc, filtLfo, gLfo };
     });
 
-    musicState = { voices, chordIndex: 0, chordTimer: null, pluckTimer: null };
+    musicState = { voices, chordIndex: 0, chordTimer: null, pluckTimer: null, lastPluckIdx: -1 };
 
-    // Glide to the next chord in the progression every ~26s, over a slow ~6s crossfade
+    // Glide to the next chord in the progression every ~22s, over a slow ~6s crossfade
     musicState.chordTimer = setInterval(() => {
       if(!musicState) return;
       musicState.chordIndex = (musicState.chordIndex + 1) % CHORD_PROGRESSION.length;
@@ -134,7 +203,7 @@ const SFX = (function(){
         v.osc.frequency.setValueAtTime(v.osc.frequency.value, t0);
         v.osc.frequency.exponentialRampToValueAtTime(nextChord[i], t0 + 6);
       });
-    }, 26000);
+    }, 22000);
 
     scheduleNextPluck();
 
@@ -147,7 +216,7 @@ const SFX = (function(){
   // feels generative/organic rather than looped.
   function scheduleNextPluck(){
     if(!musicState) return;
-    const delay = 4500 + Math.random() * 6000; // ~4.5-10.5s between notes
+    const delay = 3800 + Math.random() * 5200; // ~3.8-9s between notes
     musicState.pluckTimer = setTimeout(() => {
       if(!musicState) return;
       playPluck();
@@ -156,19 +225,42 @@ const SFX = (function(){
   }
 
   function playPluck(){
-    if(!ctx) return;
-    const freq = PLUCK_SCALE[Math.floor(Math.random() * PLUCK_SCALE.length)];
+    if(!ctx || !musicState) return;
+    const fx = ensureMusicFx(ctx);
+    const scale = PLUCK_SCALES[musicState.chordIndex];
+    // pick a note from the *current* chord so the melody always harmonizes,
+    // nudging away from an immediate repeat of the last note
+    let idx = Math.floor(Math.random() * scale.length);
+    if(idx === musicState.lastPluckIdx) idx = (idx + 1) % scale.length;
+    musicState.lastPluckIdx = idx;
+    const freq = scale[idx];
+
     const t0 = ctx.currentTime;
     const osc = ctx.createOscillator();
     osc.type = 'triangle';
     osc.frequency.value = freq;
+    // faint detuned octave-up voice for a touch of shimmer/body
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.value = freq * 2.005;
+
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(0.07, t0 + 0.03);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.2);
-    osc.connect(g).connect(musicBus);
-    osc.start(t0);
-    osc.stop(t0 + 3.3);
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.25; // shimmer voice sits well under the main tone
+
+    const pan = (typeof ctx.createStereoPanner === 'function') ? ctx.createStereoPanner() : null;
+    if(pan) pan.pan.value = (Math.random() * 2 - 1) * 0.5;
+
+    osc.connect(g);
+    osc2.connect(g2).connect(g);
+    if(pan){ g.connect(pan); pan.connect(fx.dry); pan.connect(fx.wetSend); pan.connect(fx.delay); }
+    else { g.connect(fx.dry); g.connect(fx.wetSend); g.connect(fx.delay); }
+
+    osc.start(t0); osc.stop(t0 + 3.3);
+    osc2.start(t0); osc2.stop(t0 + 3.3);
   }
 
   function stopMusic(){
@@ -182,7 +274,7 @@ const SFX = (function(){
     const voices = musicState.voices;
     musicState = null;
     setTimeout(() => {
-      voices.forEach(v => { try{ v.osc.stop(); v.lfo.stop(); }catch(e){} });
+      voices.forEach(v => { try{ v.osc.stop(); v.filtLfo.stop(); v.gLfo.stop(); }catch(e){} });
     }, 900);
   }
 
