@@ -71,12 +71,6 @@ function generateDungeon(){
   }
   bossRoom.type = 'boss';
 
-  let itemRoom = deadEnds.find(r => r !== bossRoom);
-  if(!itemRoom){
-    for(const [, r] of rooms){ if(r.type === 'normal'){ itemRoom = r; break; } }
-  }
-  if(itemRoom) itemRoom.type = 'item';
-
   const candidates = [...rooms.values()].filter(r => r.type === 'normal' && r.dist >= 1);
   let keyRoom = candidates.length ? choice(candidates) : null;
   if(keyRoom) keyRoom.type = 'key';
@@ -107,7 +101,7 @@ function generateDungeon(){
   for(const [, r] of rooms){ if(r.dist > maxDist) maxDist = r.dist; }
 
   // Fog of war: rolled last, after every room's final type is settled
-  // (boss/item/key/secret reassignments above all happen before this point),
+  // (boss/key/secret reassignments above all happen before this point),
   // so eligibleTypes checks against the type the room actually ends up with.
   const fc = CONFIG.fog;
   for(const [, r] of rooms){
@@ -119,7 +113,7 @@ function generateDungeon(){
 
 function makeObstacles(type){
   const obs = [];
-  if(type === 'start' || type === 'item' || type === 'secret') return obs;
+  if(type === 'start' || type === 'secret') return obs;
   const oc = CONFIG.obstacles;
   const n = randInt(oc.countMin, oc.countMax);
   for(let i = 0; i < n; i++){
@@ -183,7 +177,7 @@ function rollAiTrait(distv, chanceBase, chancePerDist, chanceMax, options){
 
 function makeEnemies(type, distv, pits){
   const enemies = [];
-  if(type === 'start' || type === 'item' || type === 'secret') return enemies;
+  if(type === 'start' || type === 'secret') return enemies;
   const ec = CONFIG.enemies;
   const isBossRoom = type === 'boss';
   const count = isBossRoom ? 1 : Math.min(ec.baseCount + Math.floor(distv / ec.countPerDist), ec.maxCount);
@@ -319,10 +313,10 @@ function makePitBorderRocks(pit){
 
 // Places 1-2 non-overlapping pits (avoiding obstacles, other pits, and the
 // room's center — kept clear for chests/warp landings). Follows the same
-// exclusions as makeObstacles: start/item/secret rooms stay hazard-free.
+// exclusions as makeObstacles: start/secret rooms stay hazard-free.
 function makePits(type, obstacles){
   const pits = [];
-  if(type === 'start' || type === 'item' || type === 'secret') return pits;
+  if(type === 'start' || type === 'secret') return pits;
   const pc = CONFIG.pits;
   if(rand() >= pc.roomChance) return pits;
   const count = randInt(pc.countMin, pc.countMax);
@@ -385,7 +379,7 @@ function makeDecor(type, obstacles, pits){
   ];
   for(const c of corners) decor.push({ kind: 'corner', x: c.x, y: c.y, seed: rand() * 1000 });
 
-  const isTreasureRoom = (type === 'item' || type === 'key' || type === 'secret');
+  const isTreasureRoom = (type === 'key' || type === 'secret');
   const count = isTreasureRoom ? dc.treasureFloorCount : randInt(dc.floorCountMin, dc.floorCountMax);
   for(let i = 0; i < count; i++){
     let x, y, ok = false;
@@ -413,7 +407,7 @@ function buildRoomInstance(meta){
     meta, obstacles, pits,
     decor: makeDecor(meta.type, obstacles, pits),
     enemies: makeEnemies(meta.type, meta.dist, pits),
-    cleared: (meta.type === 'start' || meta.type === 'item' || meta.type === 'secret'),
+    cleared: (meta.type === 'start' || meta.type === 'secret'),
     visited: false, chestTaken: false
   };
 }

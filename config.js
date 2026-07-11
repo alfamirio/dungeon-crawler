@@ -171,7 +171,7 @@ const CONFIG = {
     crackedWallProximity: 60
   },
   items: {
-    maxBombsCap: 20, bombRefillAmount: 2, maxBombsIncrement: 1, secretHealAmount: 2,
+    secretHealAmount: 2,
     // Reward chest that appears after a normal/boss room is fully cleared of enemies
     clearChestHpPercent: 0.5, clearChestBombPercent: 0.5
   },
@@ -225,7 +225,7 @@ const CONFIG = {
   fog: {
     enabled: true,
     roomChance: 0.35,
-    eligibleTypes: ['normal', 'boss', 'key'], // start/item/secret stay excluded, like pits
+    eligibleTypes: ['normal', 'boss', 'key'], // start/secret stay excluded, like pits
     radius: 180,     // fully-visible core, in room-local pixels
     softness: 70,    // feathered falloff band beyond the core
     flicker: { enabled: true, amplitude: 6, speedHz: 0.6 } // cosmetic torch waver

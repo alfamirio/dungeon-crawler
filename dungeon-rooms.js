@@ -158,7 +158,7 @@ Object.assign(DungeonScene.prototype, {
     if(this.chestSprite){ this.chestSprite.destroy(); this.chestSprite = null; }
     if(this.chestGlow){ this.chestGlow.destroy(); this.chestGlow = null; }
     const meta = inst.meta;
-    if((meta.type === 'item' || meta.type === 'key' || meta.type === 'secret') && !inst.chestTaken){
+    if((meta.type === 'key' || meta.type === 'secret') && !inst.chestTaken){
       const cx = ROOM_W / 2 + WALL, cy = ROOM_H / 2 + WALL;
       const isSecret = meta.type === 'secret';
       const isKey = meta.type === 'key';

@@ -387,11 +387,7 @@ Object.assign(DungeonScene.prototype, {
     const type = chestSprite.chestType;
     this.triggerHappyFlash();
     if(type === 'key'){ p.hasKey = true; SFX.keyPickup(); }
-    else if(type === 'item'){
-      p.maxBombs = Phaser.Math.Clamp(p.maxBombs + CONFIG.items.maxBombsIncrement, 0, CONFIG.items.maxBombsCap);
-      p.bombs = Phaser.Math.Clamp(p.bombs + CONFIG.items.bombRefillAmount, 0, p.maxBombs);
-      SFX.chestPickup();
-    } else if(type === 'secret'){
+    else if(type === 'secret'){
       p.hp = Phaser.Math.Clamp(p.hp + CONFIG.items.secretHealAmount, 0, p.maxHp);
       SFX.chestPickup();
     } else if(type === 'reward'){

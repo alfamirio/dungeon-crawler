@@ -24,7 +24,7 @@ The right-hand sidebar mirrors most debug actions as buttons/toggles (Clear room
 
 ## Core systems
 
-**Dungeon generation** (`dungeon-generation.js`) — Rooms are grown outward from a start room via a randomized flood-fill, then one dead-end room is designated the boss room (with its approach doors locked), another becomes the item room, a random reachable room becomes the key room, and a secret room is attached behind a cracked wall. Every room independently rolls a biome, obstacle layout, pit hazards, decor, and enemies. Everything is driven by a single seedable RNG (`utils.js`), so a given seed always reproduces the same dungeon — pass one via `?seed=<number>` in the URL, or read the current run's seed off the HUD.
+**Dungeon generation** (`dungeon-generation.js`) — Rooms are grown outward from a start room via a randomized flood-fill, then one dead-end room is designated the boss room (with its approach doors locked), a random reachable room becomes the key room, and a secret room is attached behind a cracked wall. Every room independently rolls a biome, obstacle layout, pit hazards, decor, and enemies. Everything is driven by a single seedable RNG (`utils.js`), so a given seed always reproduces the same dungeon — pass one via `?seed=<number>` in the URL, or read the current run's seed off the HUD.
 
 **Biomes** (`config.js`) — 13 biome presets (Stone, Roots, Ice, Lava, Desert, Cave, Graveyard, Alien, Island, Temple, Neon, Factory), each with its own floor/wall art, ambient particle behavior, and fog tint. Assigned per-room at generation time.
 
@@ -32,7 +32,7 @@ The right-hand sidebar mirrors most debug actions as buttons/toggles (Clear room
 
 **Adaptive difficulty** (`dungeon-adaptive.js`) — Tracks a rolling skill estimate from per-room damage taken, clear time, and bomb/dash usage, plus a penalty on death. The result scales enemy HP/speed/turret cadence by up to ±20% (bosses damped to 40% of the swing). Persists across retries within a session; only resets on a full page reload. Toggle via the sidebar or `CONFIG.adaptive.enabled`.
 
-**Pits** (`dungeon-generation.js`, `dungeon-player.js`) — Instant-death hazards in three shapes (ellipse, rect, moat-with-island), placed at generation time with a guaranteed-clear zone at room center. Excluded from start/item/secret rooms.
+**Pits** (`dungeon-generation.js`, `dungeon-player.js`) — Instant-death hazards in three shapes (ellipse, rect, moat-with-island), placed at generation time with a guaranteed-clear zone at room center. Excluded from start/secret rooms.
 
 **Fog of war** (`dungeon-generation.js`, `textures.js`, `dungeon-scene.js`, `dungeon-rooms.js`) — A subset of normal/boss/key rooms (`CONFIG.fog.roomChance`, seed-deterministic) are lit only by a fixed-radius torch around the player. Implemented as a single large pre-baked "veil" image — solid black outside the torch radius, soft-transparent within it — repositioned on the player every frame. No occlusion, no memory: only the current torch radius is ever visible, and stepping away re-darkens what you just lit. Use the sidebar's **Force fog** toggle to test the effect in any room regardless of the seed's actual dark-room roll; the browser console also logs which rooms in the current seed are dark.
 

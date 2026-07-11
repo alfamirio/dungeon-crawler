@@ -442,7 +442,7 @@ function buildTextures(scene){
   });
   // Post-clear reward chest: an actual chest silhouette (wood body + lid +
   // metal band/lock), tinted with COLORS.chestReward on the hardware so it
-  // still reads as distinct from the gold item-room / green secret chests.
+  // still reads as distinct from the green secret chest.
   mk('tex_chest_reward', 40, 40, g => {
     // Lid
     g.fillStyle(0x8a5a34, 1);
@@ -478,7 +478,7 @@ function buildTextures(scene){
   });
 
   // Key-room pickup: a proper key shape (ring + shaft + teeth), distinct from
-  // the diamond-gem chest used for item/secret rooms.
+  // the diamond-gem chest used for the secret room.
   mk('tex_key_pickup', 40, 40, g => {
     g.lineStyle(5, COLORS.chest, 1);
     g.strokeCircle(11, 20, 8);

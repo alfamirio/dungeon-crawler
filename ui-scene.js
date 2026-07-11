@@ -99,7 +99,7 @@ class UIScene extends Phaser.Scene {
         if(inst && inst.visited){
           color = hex('#3a4256');
           if(inst.meta.type === 'boss') color = COLORS.chaser;
-          else if(inst.meta.type === 'item' || inst.meta.type === 'key' || inst.meta.type === 'secret') color = hex('#f4d35e');
+          else if(inst.meta.type === 'key' || inst.meta.type === 'secret') color = hex('#f4d35e');
         }
         const isCurrent = (x === current.x && y === current.y);
         if(isCurrent) color = COLORS.player;
