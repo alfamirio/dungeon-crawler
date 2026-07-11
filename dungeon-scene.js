@@ -68,6 +68,12 @@ class DungeonScene extends Phaser.Scene {
     this.fogVeilSprite = this.add.image(WALL + ROOM_W / 2, WALL + ROOM_H / 2, 'tex_fog_veil').setDepth(6.5).setVisible(false);
     this.fogActive = false;
 
+    // Night-vision goggles (skill treasure): a plain full-room color wash
+    // shown in dark rooms instead of the torch veil above, once the player
+    // has picked up the skill (see rebuildFog in dungeon-rooms.js). Static
+    // per room (no per-frame repositioning needed, unlike the torch veil).
+    this.nightVisionRect = this.add.rectangle(WALL + ROOM_W / 2, WALL + ROOM_H / 2, ROOM_W, ROOM_H, COLORS.nightVisionTint, CONFIG.fog.nightVisionAlpha).setDepth(6.3).setVisible(false);
+
     // Subtle vignette via Phaser's camera filter (external = whole-screen effects)
     this.cameras.main.filters.external.addVignette(0.5, 0.5, 0.9, 0.2, 0x000000);
 
@@ -260,12 +266,23 @@ class DungeonScene extends Phaser.Scene {
     this.ui.hideMessage();
     this.ui.setupHearts(CONFIG.player.maxHp);
     this.ui.setSeed(this.seed);
+    this.ui.setBombUnlocked(false);
+    this.ui.setBowUnlocked(false);
+    this.ui.setHookUnlocked(false);
+    this.ui.setNightVision(false);
 
     ps.hp = CONFIG.player.startHp; ps.maxHp = CONFIG.player.maxHp;
     ps.bombs = CONFIG.player.startBombs; ps.maxBombs = CONFIG.player.maxBombs;
     ps.arrows = CONFIG.player.startArrows; ps.maxArrows = CONFIG.player.maxArrows; ps.bowCd = 0;
     ps.hasKey = false; ps.invuln = 0; ps.attackCd = 0; ps.attacking = 0;
     ps.godmode = false; ps.hasShield = true; ps.shielding = false;
+    // Bomb/bow/hookshot/night-vision all start locked — each is unlocked by
+    // finding its skill-treasure chest somewhere in the dungeon (see the
+    // 'skill' room type in dungeon-generation.js and onChestPickup in
+    // dungeon-combat.js). Plain properties (not Data-Manager-backed) since
+    // each is only ever flipped from that single pickup site, which updates
+    // the HUD directly rather than via a changedata listener.
+    ps.hasBomb = false; ps.hasBow = false; ps.hasHookshot = false; ps.hasNightVision = false;
     ps.dashCd = 0; ps.dashing = 0; ps.dashDir = { x: 0, y: 1 };
     ps.jumpCd = 0; ps.jumping = 0;
     ps.falling = false;

@@ -324,7 +324,7 @@ Object.assign(DungeonScene.prototype, {
 
     if(p.hookCd > 0) p.hookCd -= dt;
 
-    if(Phaser.Input.Keyboard.JustDown(k.hook) && p.hookCd <= 0 && p.dashing <= 0 && !p.shielding && p.jumping <= 0){
+    if(p.hasHookshot && Phaser.Input.Keyboard.JustDown(k.hook) && p.hookCd <= 0 && p.dashing <= 0 && !p.shielding && p.jumping <= 0){
       p.hookCd = hc.cooldown;
       const room = this.curInst();
       let best = null, bestDist = Infinity;
@@ -403,10 +403,12 @@ Object.assign(DungeonScene.prototype, {
     roomInst.chestTaken = true;
     const type = chestSprite.chestType;
     this.triggerHappyFlash();
+    let burstColor = COLORS.chest;
     if(type === 'key'){ p.hasKey = true; SFX.keyPickup(); }
     else if(type === 'secret'){
       p.hp = Phaser.Math.Clamp(p.hp + CONFIG.items.secretHealAmount, 0, p.maxHp);
       SFX.chestPickup();
+      burstColor = COLORS.chestSecret;
     } else if(type === 'reward'){
       const bonusHp = Math.round(p.maxHp * CONFIG.items.clearChestHpPercent);
       const bonusBombs = Math.round(p.maxBombs * CONFIG.items.clearChestBombPercent);
@@ -415,8 +417,20 @@ Object.assign(DungeonScene.prototype, {
       p.bombs = Phaser.Math.Clamp(p.bombs + bonusBombs, 0, p.maxBombs);
       p.arrows = Phaser.Math.Clamp(p.arrows + bonusArrows, 0, p.maxArrows);
       SFX.chestPickup();
+    } else if(type === 'skill'){
+      // Unlocks the corresponding ability outright — no ammo/ranks involved,
+      // this chest just flips the matching hasX flag (gated in dungeon-
+      // combat.js's handleBombs/handleBow/handleHookshot, and in rebuildFog
+      // for night vision). See SKILL_INFO in config.js for the chest/burst color.
+      const skill = chestSprite.skillName;
+      if(skill === 'bomb'){ p.hasBomb = true; this.ui.setBombUnlocked(true); }
+      else if(skill === 'bow'){ p.hasBow = true; this.ui.setBowUnlocked(true); }
+      else if(skill === 'hookshot'){ p.hasHookshot = true; this.ui.setHookUnlocked(true); }
+      else if(skill === 'nightvision'){ p.hasNightVision = true; this.ui.setNightVision(true); this.rebuildFog(this.curInst()); }
+      SFX.skillUnlock();
+      burstColor = SKILL_INFO[skill].color;
     }
-    this.burst(chestSprite.x - WALL, chestSprite.y - WALL, COLORS.chest, 24);
+    this.burst(chestSprite.x - WALL, chestSprite.y - WALL, burstColor, 24);
     chestSprite.destroy();
     this.chestSprite = null;
     if(this.chestGlow){ this.chestGlow.destroy(); this.chestGlow = null; }
@@ -474,7 +488,7 @@ Object.assign(DungeonScene.prototype, {
     // JustDown() detects the key-press edge. Unlock-all cheat: ammo is
     // never consumed (still counts toward stats), so bombs are effectively
     // unlimited while it's active — see setUnlockAll() in dungeon-debug.js.
-    if(Phaser.Input.Keyboard.JustDown(k.bomb) && (this.unlockAllActive || p.bombs > 0)){
+    if(p.hasBomb && Phaser.Input.Keyboard.JustDown(k.bomb) && (this.unlockAllActive || p.bombs > 0)){
       if(!this.unlockAllActive) p.bombs--;
       this.stats.bombsUsed++;
       this.updateStatsPanel();
@@ -503,7 +517,7 @@ Object.assign(DungeonScene.prototype, {
 
     // Unlock-all cheat: same ammo-never-consumed treatment as bombs above,
     // so arrows are effectively unlimited (still cooldown-gated) while active.
-    if(Phaser.Input.Keyboard.JustDown(k.bow) && p.bowCd <= 0 && (this.unlockAllActive || p.arrows > 0) && !p.shielding && p.dashing <= 0 && p.jumping <= 0){
+    if(p.hasBow && Phaser.Input.Keyboard.JustDown(k.bow) && p.bowCd <= 0 && (this.unlockAllActive || p.arrows > 0) && !p.shielding && p.dashing <= 0 && p.jumping <= 0){
       p.bowCd = cc.bowCooldown;
       if(!this.unlockAllActive) p.arrows--;
       this.stats.arrowsUsed++;

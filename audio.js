@@ -360,6 +360,10 @@ const SFX = (function(){
     turretShoot(){ tone(700, 0.05, { type: 'sine', gain: 0.06, endFreq: 500 }); },
     chestPickup(){ tone(523.25, 0.1, { type: 'sine', gain: 0.16 }); tone(659.25, 0.12, { type: 'sine', gain: 0.14, delay: 0.07 }); tone(783.99, 0.16, { type: 'sine', gain: 0.13, delay: 0.14 }); },
     keyPickup(){ tone(880, 0.08, { type: 'sine', gain: 0.14 }); tone(1318.5, 0.1, { type: 'sine', gain: 0.1, delay: 0.05 }); },
+    // A bigger 4-note ascending jingle for unlocking a permanent skill
+    // (bomb/bow/hookshot/night-vision) — deliberately more celebratory than
+    // the plain chestPickup/keyPickup cues since it's a one-time ability gain.
+    skillUnlock(){ [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, 0.14, { type: 'sine', gain: 0.15, delay: i * 0.07 })); },
     doorUnlock(){ noiseBurst(0.08, { filterFreq: 700, filterType: 'lowpass', gain: 0.14 }); tone(220, 0.08, { type: 'square', gain: 0.08, delay: 0.03 }); },
     wallBreak(){ noiseBurst(0.16, { filterFreq: 600, filterType: 'lowpass', gain: 0.22 }); },
     roomClear(){ tone(392.0, 0.1, { type: 'sine', gain: 0.12 }); tone(523.25, 0.14, { type: 'sine', gain: 0.12, delay: 0.09 }); },

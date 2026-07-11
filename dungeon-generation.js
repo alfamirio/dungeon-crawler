@@ -75,6 +75,19 @@ function generateDungeon(){
   let keyRoom = candidates.length ? choice(candidates) : null;
   if(keyRoom) keyRoom.type = 'key';
 
+  // Skill treasures: bomb, bow, hookshot, and night-vision goggles all start
+  // locked (see newGame() in dungeon-scene.js) and are unlocked by finding a
+  // one-time pickup somewhere in the dungeon — no need to clear the room's
+  // enemies first, same "immediate chest" treatment as the key/secret rooms
+  // (see rebuildChest in dungeon-rooms.js). Each skill gets its own distinct
+  // room, picked from whatever normal rooms are left after key/boss.
+  const SKILL_TYPES = ['bomb', 'bow', 'hookshot', 'nightvision'];
+  const skillCandidates = rng.shuffle([...rooms.values()].filter(r => r.type === 'normal' && r.dist >= 1));
+  for(let i = 0; i < SKILL_TYPES.length && i < skillCandidates.length; i++){
+    skillCandidates[i].type = 'skill';
+    skillCandidates[i].skill = SKILL_TYPES[i];
+  }
+
   const bossNeighbors = neighborsOf(bossRoom.x, bossRoom.y);
   for(const bn of bossNeighbors){
     const dk = doorKey(bossRoom.x, bossRoom.y, bn.x, bn.y);
@@ -379,7 +392,7 @@ function makeDecor(type, obstacles, pits){
   ];
   for(const c of corners) decor.push({ kind: 'corner', x: c.x, y: c.y, seed: rand() * 1000 });
 
-  const isTreasureRoom = (type === 'key' || type === 'secret');
+  const isTreasureRoom = (type === 'key' || type === 'secret' || type === 'skill');
   const count = isTreasureRoom ? dc.treasureFloorCount : randInt(dc.floorCountMin, dc.floorCountMax);
   for(let i = 0; i < count; i++){
     let x, y, ok = false;

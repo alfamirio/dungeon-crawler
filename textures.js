@@ -514,6 +514,50 @@ function buildTextures(scene){
     g.strokeRoundedRect(3, 4, 34, 33, { tl: 7, tr: 7, bl: 6, br: 6 });
   });
 
+  // Skill-treasure pickups (bomb/bow/hookshot/night-vision goggles — see
+  // SKILL_INFO in config.js and the 'skill' room type in dungeon-
+  // generation.js). Same diamond chest silhouette as the key/secret
+  // treasures, tinted per skill with a small icon glyph baked on top so the
+  // skill inside is identifiable before picking it up.
+  const skillDiamond = (g, color) => {
+    g.fillStyle(color, 1);
+    g.fillPoints([{ x: 20, y: 2 }, { x: 38, y: 20 }, { x: 20, y: 38 }, { x: 2, y: 20 }], true);
+    g.lineStyle(2, 0x000000, 0.33);
+    g.strokePoints([{ x: 20, y: 2 }, { x: 38, y: 20 }, { x: 20, y: 38 }, { x: 2, y: 20 }], true);
+  };
+  mk('tex_skill_bomb', 40, 40, g => {
+    skillDiamond(g, SKILL_INFO.bomb.color);
+    g.fillStyle(0x1a1d24, 1);
+    g.fillCircle(20, 22, 7);
+    g.fillStyle(COLORS.bombFuse, 1);
+    g.fillCircle(20, 13, 2.6);
+  });
+  mk('tex_skill_bow', 40, 40, g => {
+    skillDiamond(g, SKILL_INFO.bow.color);
+    g.lineStyle(2.4, 0x1a1d24, 1);
+    g.beginPath(); g.arc(14, 20, 9, Phaser.Math.DegToRad(-60), Phaser.Math.DegToRad(60)); g.strokePath();
+    g.lineStyle(1.4, 0x1a1d24, 0.8);
+    g.lineBetween(15, 11.5, 15, 28.5);
+  });
+  mk('tex_skill_hookshot', 40, 40, g => {
+    skillDiamond(g, SKILL_INFO.hookshot.color);
+    g.fillStyle(0x1a1d24, 1);
+    g.fillTriangle(11, 20, 27, 14, 27, 26);
+    g.lineStyle(2, 0x1a1d24, 0.8);
+    g.lineBetween(27, 20, 33, 20);
+  });
+  mk('tex_skill_nightvision', 40, 40, g => {
+    skillDiamond(g, SKILL_INFO.nightvision.color);
+    // Simple goggles glyph: two lens rings + bridge
+    g.fillStyle(0x0d1a12, 1);
+    g.fillCircle(14, 21, 6);
+    g.fillCircle(26, 21, 6);
+    g.fillRect(18, 19, 4, 4);
+    g.fillStyle(SKILL_INFO.nightvision.color, 0.9);
+    g.fillCircle(14, 21, 3);
+    g.fillCircle(26, 21, 3);
+  });
+
   // Small rock/brick chunk scattered around pit edges — tinted per biome via setTint().
   mk('tex_pit_rock', 14, 10, g => {
     g.fillStyle(0xffffff, 1);
@@ -612,5 +656,17 @@ function buildTextures(scene){
   mk('tex_hud_god', 16, 16, g => {
     g.lineStyle(2, hex('#f4d35e'), 1);
     g.strokeCircle(8, 8, 6);
+  });
+  mk('tex_hud_hook', 16, 16, g => {
+    g.lineStyle(2, hex('#b388ff'), 1);
+    g.lineBetween(2, 14, 10, 6);
+    g.fillStyle(hex('#b388ff'), 1);
+    g.fillTriangle(9, 3, 14, 6, 9, 9);
+  });
+  mk('tex_hud_nightvision', 16, 16, g => {
+    g.lineStyle(2, hex('#2adf7a'), 1);
+    g.strokeCircle(5, 9, 3.2);
+    g.strokeCircle(11, 9, 3.2);
+    g.lineBetween(7.9, 9, 8.1, 9);
   });
 }

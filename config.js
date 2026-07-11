@@ -237,7 +237,12 @@ const CONFIG = {
     eligibleTypes: ['normal', 'boss', 'key'], // start/secret stay excluded, like pits
     radius: 180,     // fully-visible core, in room-local pixels
     softness: 70,    // feathered falloff band beyond the core
-    flicker: { enabled: true, amplitude: 6, speedHz: 0.6 } // cosmetic torch waver
+    flicker: { enabled: true, amplitude: 6, speedHz: 0.6 }, // cosmetic torch waver
+    // Night-vision goggles (a skill treasure, see SKILL_INFO below) replace
+    // the torch veil in dark rooms with a plain full-room color wash at this
+    // alpha instead — the room stays fully lit/visible, just tinted, rather
+    // than restricted to a torch radius. See rebuildFog() in dungeon-rooms.js.
+    nightVisionAlpha: 0.16
   }
 };
 
@@ -273,7 +278,23 @@ const COLORS = {
   // Pit hazard palette (rim lip, mid floor, deep dark core)
   pitRim: hex('#171b26'), pitFloor: hex('#0d0f16'), pitFill: hex('#05060a'),
   // AI-trait badge colors: skill = color, personality = icon (see dungeon-enemy-ai.js)
-  skillDefault: hex('#f4d35e'), skillExplosive: hex('#ff6a3d'), skillRadial: hex('#b388ff')
+  skillDefault: hex('#f4d35e'), skillExplosive: hex('#ff6a3d'), skillRadial: hex('#b388ff'),
+  // Full-room wash shown in dark rooms once the player has night-vision
+  // goggles, replacing the torch veil (see rebuildFog in dungeon-rooms.js)
+  nightVisionTint: hex('#2adf7a')
+};
+
+// ---- Skill treasures: bomb, bow, hookshot, and night-vision goggles are
+// all gated behind a one-time pickup somewhere in the dungeon (see the
+// 'skill' room type in dungeon-generation.js and rebuildChest/onChestPickup
+// in dungeon-rooms.js / dungeon-combat.js). Each entry drives that skill's
+// chest texture + glow/burst color, keyed by the same string stored on
+// meta.skill / chestSprite.skillName.
+const SKILL_INFO = {
+  bomb: { texKey: 'tex_skill_bomb', color: hex('#ffb020'), label: 'Bombs' },
+  bow: { texKey: 'tex_skill_bow', color: hex('#8ec6ff'), label: 'Bow' },
+  hookshot: { texKey: 'tex_skill_hookshot', color: hex('#b388ff'), label: 'Hookshot' },
+  nightvision: { texKey: 'tex_skill_nightvision', color: hex('#2adf7a'), label: 'Night Vision Goggles' }
 };
 
 // Biomes: each room independently gets a random biome, chosen once at

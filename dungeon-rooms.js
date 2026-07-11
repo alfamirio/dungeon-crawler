@@ -161,18 +161,22 @@ Object.assign(DungeonScene.prototype, {
     if(this.chestSprite){ this.chestSprite.destroy(); this.chestSprite = null; }
     if(this.chestGlow){ this.chestGlow.destroy(); this.chestGlow = null; }
     const meta = inst.meta;
-    if((meta.type === 'key' || meta.type === 'secret') && !inst.chestTaken){
+    if((meta.type === 'key' || meta.type === 'secret' || meta.type === 'skill') && !inst.chestTaken){
       const cx = ROOM_W / 2 + WALL, cy = ROOM_H / 2 + WALL;
       const isSecret = meta.type === 'secret';
       const isKey = meta.type === 'key';
-      const texKey = isSecret ? 'tex_chest_secret' : isKey ? 'tex_key_pickup' : 'tex_chest';
-      this.chestGlow = this.add.image(cx, cy, 'tex_glow').setTint(isSecret ? COLORS.chestSecret : COLORS.chest).setAlpha(0.4).setScale(0.7).setDepth(1.5);
+      const isSkill = meta.type === 'skill';
+      const skillInfo = isSkill ? SKILL_INFO[meta.skill] : null;
+      const texKey = isSecret ? 'tex_chest_secret' : isKey ? 'tex_key_pickup' : isSkill ? skillInfo.texKey : 'tex_chest';
+      const glowColor = isSecret ? COLORS.chestSecret : isSkill ? skillInfo.color : COLORS.chest;
+      this.chestGlow = this.add.image(cx, cy, 'tex_glow').setTint(glowColor).setAlpha(0.4).setScale(0.7).setDepth(1.5);
       this.chestSprite = this.chestGroup.create(cx, cy, texKey);
       const r = CONFIG.rooms.chestPickupRadius;
       this.chestSprite.setCircle(r, this.chestSprite.width / 2 - r, this.chestSprite.height / 2 - r);
       this.chestSprite.body.setAllowGravity(false);
       this.chestSprite.body.setImmovable(true);
       this.chestSprite.chestType = meta.type;
+      if(isSkill) this.chestSprite.skillName = meta.skill;
       this.chestSprite.setDepth(2);
       this.tweens.add({ targets: [this.chestSprite, this.chestGlow], y: '+=8', duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       this.tweens.add({ targets: this.chestGlow, alpha: { from: 0.3, to: 0.55 }, scale: { from: 0.6, to: 0.85 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
@@ -275,10 +279,17 @@ Object.assign(DungeonScene.prototype, {
   // snaps it to the player immediately so there's no one-frame flash of it
   // sitting at its default position before updateFogOfWar() catches up.
   rebuildFog(inst){
-    const on = !!(CONFIG.fog.enabled && (inst.meta.dark || this.forceFogActive));
-    this.fogActive = on;
-    this.fogVeilSprite.setVisible(on);
-    if(on) this.updateFogOfWar();
+    const dark = !!(inst.meta.dark || this.forceFogActive);
+    const hasNightVision = !!this.playerSprite.hasNightVision;
+    // Night-vision goggles (skill treasure) trade the torch-radius veil for
+    // a plain full-room tint — the room stays fully visible, just colored,
+    // rather than restricted to a torch radius around the player.
+    const showTorch = CONFIG.fog.enabled && dark && !hasNightVision;
+    const showNightTint = CONFIG.fog.enabled && dark && hasNightVision;
+    this.fogActive = showTorch;
+    this.fogVeilSprite.setVisible(showTorch);
+    if(showTorch) this.updateFogOfWar();
+    this.nightVisionRect.setVisible(showNightTint);
   },
 
   // Called every frame from stepGame() while the current room is dark.

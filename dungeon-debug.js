@@ -60,13 +60,14 @@ Object.assign(DungeonScene.prototype, {
   },
 
   // Unlocks every locked/cracked door in the dungeon, hands over the boss
-  // key, and tops off bombs/arrows (sidebar "Unlock all" switch). Bomb/arrow
+  // key, unlocks every skill treasure (bomb/bow/hookshot/night-vision), and
+  // tops off bombs/arrows (sidebar "Unlock all" switch). Bomb/arrow
   // consumption is also suppressed while this is active (see handleBombs/
   // handleBow in dungeon-combat.js) so ammo effectively stays unlimited.
   // Reversible: turning the switch back off re-locks/re-cracks exactly the
   // doors this cheat forced open (any door already 'open' on its own is left
-  // alone), revokes the boss key IF this cheat was the one that granted it
-  // (a legitimately-found key is never taken away), and refills ammo to max
+  // alone), revokes the boss key and any skill IF this cheat was what granted
+  // it (anything legitimately found stays found), and refills ammo to max
   // rather than trying to restore whatever count it was at before — simpler,
   // and "full ammo" is a fine place to land either way.
   setUnlockAll(on){
@@ -88,6 +89,14 @@ Object.assign(DungeonScene.prototype, {
       }
       this._unlockAllGrantedKey = !p.hasKey;
       if(this._unlockAllGrantedKey) p.hasKey = true;
+
+      this._unlockAllGrantedSkills = {
+        bomb: !p.hasBomb, bow: !p.hasBow, hookshot: !p.hasHookshot, nightvision: !p.hasNightVision
+      };
+      if(this._unlockAllGrantedSkills.bomb){ p.hasBomb = true; this.ui.setBombUnlocked(true); }
+      if(this._unlockAllGrantedSkills.bow){ p.hasBow = true; this.ui.setBowUnlocked(true); }
+      if(this._unlockAllGrantedSkills.hookshot){ p.hasHookshot = true; this.ui.setHookUnlocked(true); }
+      if(this._unlockAllGrantedSkills.nightvision){ p.hasNightVision = true; this.ui.setNightVision(true); }
     } else {
       if(this._unlockAllForcedDoors){
         for(const { door, state } of this._unlockAllForcedDoors) door.state = state;
@@ -95,10 +104,20 @@ Object.assign(DungeonScene.prototype, {
       this._unlockAllForcedDoors = null;
       if(this._unlockAllGrantedKey) p.hasKey = false;
       this._unlockAllGrantedKey = false;
+
+      const gs = this._unlockAllGrantedSkills;
+      if(gs){
+        if(gs.bomb){ p.hasBomb = false; this.ui.setBombUnlocked(false); }
+        if(gs.bow){ p.hasBow = false; this.ui.setBowUnlocked(false); }
+        if(gs.hookshot){ p.hasHookshot = false; this.ui.setHookUnlocked(false); }
+        if(gs.nightvision){ p.hasNightVision = false; this.ui.setNightVision(false); }
+      }
+      this._unlockAllGrantedSkills = null;
     }
     p.bombs = p.maxBombs;
     p.arrows = p.maxArrows;
     this.rebuildWalls();
+    this.rebuildFog(this.curInst()); // night-vision toggling can change how the current room's darkness renders
   },
 
   // Shared teleport: jumps straight to room (x,y), no reseed/reset, same as
