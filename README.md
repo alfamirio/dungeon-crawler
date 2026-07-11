@@ -22,7 +22,7 @@ Open `index.html` in a browser to play — no build step, no server required.
 | H | Debug: return to start room |
 | 1 / 2 / 3 / 4 | Debug: warp to adjacent room (N/E/S/W) |
 
-The right-hand sidebar mirrors most debug actions as buttons/toggles (Clear room, Warp to boss/start, Invincibility, Unlock all, Adaptive difficulty, Force fog) for mouse/touch use, plus a live run-stats panel and minimap. **Unlock all** is a full "cheat mode" toggle: it opens every locked and cracked door in the dungeon, hands you the boss key, and gives you unlimited bombs/arrows (shown as `∞` on the HUD) for as long as it's on — turning it back off doesn't re-lock anything or drain ammo.
+The right-hand sidebar mirrors most debug actions as buttons/toggles (Clear room, Warp to boss/start, Invincibility, Unlock all, Adaptive difficulty, Force fog) for mouse/touch use, plus a live run-stats panel and minimap. **Unlock all** is a full "cheat mode" toggle: it opens every locked and cracked door in the dungeon, hands you the boss key, and gives you unlimited bombs/arrows (shown as `∞` on the HUD) for as long as it's on. It's reversible — turning it back off re-locks/re-cracks whichever doors it forced open (any door already open on its own stays open), takes back the boss key if this cheat was the one that granted it, and refills bombs/arrows to full.
 
 ## Core systems
 

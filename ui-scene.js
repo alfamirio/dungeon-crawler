@@ -19,11 +19,14 @@ class UIScene extends Phaser.Scene {
     this.bowIcon = this.add.image(150, 50, 'tex_hud_bow').setScrollFactor(0).setDepth(20);
     this.bowText = this.add.text(164, 43, '0/0', { fontFamily: 'Segoe UI, sans-serif', fontSize: '14px', color: '#d9dce3' }).setScrollFactor(0).setDepth(20);
 
-    this.keyIcon = this.add.image(96, 50, 'tex_hud_key').setScrollFactor(0).setDepth(20).setVisible(false);
-    this.keyText = this.add.text(110, 44, 'key', { fontFamily: 'Segoe UI, sans-serif', fontSize: '13px', color: '#d9dce3' }).setScrollFactor(0).setDepth(20).setVisible(false);
+    // Key / invincible status: mutually-exclusive indicators (only one is
+    // ever visible at a time), given their own row below the bomb/bow
+    // counters — "INVINCIBLE" is too wide to fit wedged between them.
+    this.keyIcon = this.add.image(20, 76, 'tex_hud_key').setScrollFactor(0).setDepth(20).setVisible(false);
+    this.keyText = this.add.text(34, 70, 'key', { fontFamily: 'Segoe UI, sans-serif', fontSize: '13px', color: '#d9dce3' }).setScrollFactor(0).setDepth(20).setVisible(false);
 
-    this.godIcon = this.add.image(96, 50, 'tex_hud_god').setScrollFactor(0).setDepth(20).setVisible(false);
-    this.godText = this.add.text(110, 44, 'INVINCIBLE', { fontFamily: 'Segoe UI, sans-serif', fontSize: '11px', color: '#f4d35e', letterSpacing: 1 }).setScrollFactor(0).setDepth(20).setVisible(false);
+    this.godIcon = this.add.image(20, 76, 'tex_hud_god').setScrollFactor(0).setDepth(20).setVisible(false);
+    this.godText = this.add.text(34, 71, 'INVINCIBLE', { fontFamily: 'Segoe UI, sans-serif', fontSize: '11px', color: '#f4d35e', letterSpacing: 1 }).setScrollFactor(0).setDepth(20).setVisible(false);
 
     this.biomeText = this.add.text(CANVAS_W - 14, 14, '', { fontFamily: 'Segoe UI, sans-serif', fontSize: '11px', color: '#6b7280', letterSpacing: 2 }).setOrigin(1, 0).setScrollFactor(0).setDepth(20);
     // Shows the current dungeon seed (reproduce via ?seed=<number>)

@@ -63,8 +63,12 @@ Object.assign(DungeonScene.prototype, {
   // key, and tops off bombs/arrows (sidebar "Unlock all" switch). Bomb/arrow
   // consumption is also suppressed while this is active (see handleBombs/
   // handleBow in dungeon-combat.js) so ammo effectively stays unlimited.
-  // One-way cheat: turning the switch back off does not re-lock doors, take
-  // the key back, or drain ammo.
+  // Reversible: turning the switch back off re-locks/re-cracks exactly the
+  // doors this cheat forced open (any door already 'open' on its own is left
+  // alone), revokes the boss key IF this cheat was the one that granted it
+  // (a legitimately-found key is never taken away), and refills ammo to max
+  // rather than trying to restore whatever count it was at before — simpler,
+  // and "full ammo" is a fine place to land either way.
   setUnlockAll(on){
     this.unlockAllActive = on;
     const p = this.playerSprite;
@@ -73,11 +77,25 @@ Object.assign(DungeonScene.prototype, {
     // immediate even if the count itself doesn't happen to change below.
     this.ui.setBombs(p.bombs, p.maxBombs);
     this.ui.setArrows(p.arrows, p.maxArrows);
-    if(!on) return;
-    for(const door of this.dungeon.doors.values()){
-      if(door.state === 'locked' || door.state === 'cracked') door.state = 'open';
+
+    if(on){
+      this._unlockAllForcedDoors = [];
+      for(const door of this.dungeon.doors.values()){
+        if(door.state === 'locked' || door.state === 'cracked'){
+          this._unlockAllForcedDoors.push({ door, state: door.state });
+          door.state = 'open';
+        }
+      }
+      this._unlockAllGrantedKey = !p.hasKey;
+      if(this._unlockAllGrantedKey) p.hasKey = true;
+    } else {
+      if(this._unlockAllForcedDoors){
+        for(const { door, state } of this._unlockAllForcedDoors) door.state = state;
+      }
+      this._unlockAllForcedDoors = null;
+      if(this._unlockAllGrantedKey) p.hasKey = false;
+      this._unlockAllGrantedKey = false;
     }
-    p.hasKey = true;
     p.bombs = p.maxBombs;
     p.arrows = p.maxArrows;
     this.rebuildWalls();
