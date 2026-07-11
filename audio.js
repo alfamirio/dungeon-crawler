@@ -369,7 +369,10 @@ const SFX = (function(){
     warp(){ tone(500, 0.14, { type: 'sine', gain: 0.1, endFreq: 900 }); },
     dash(){ noiseBurst(0.09, { filterFreq: 2200, filterType: 'highpass', gain: 0.14 }); tone(460, 0.08, { type: 'sine', gain: 0.07, endFreq: 900 }); },
     hookFire(){ tone(680, 0.06, { type: 'square', gain: 0.09, endFreq: 1100 }); noiseBurst(0.05, { filterFreq: 2400, filterType: 'highpass', gain: 0.08 }); },
-    pitFall(){ noiseBurst(0.28, { filterFreq: 280, filterType: 'lowpass', gain: 0.24 }); tone(180, 0.35, { type: 'sine', gain: 0.15, endFreq: 40 }); }
+    pitFall(){ noiseBurst(0.28, { filterFreq: 280, filterType: 'lowpass', gain: 0.24 }); tone(180, 0.35, { type: 'sine', gain: 0.15, endFreq: 40 }); },
+    bowFire(){ noiseBurst(0.05, { filterFreq: 2800, filterType: 'highpass', gain: 0.09 }); tone(560, 0.05, { type: 'sine', gain: 0.06, endFreq: 950 }); },
+    arrowHit(){ noiseBurst(0.06, { filterFreq: 1500, filterType: 'bandpass', gain: 0.16 }); },
+    jump(){ tone(340, 0.14, { type: 'sine', gain: 0.1, endFreq: 620 }); noiseBurst(0.05, { filterFreq: 2000, filterType: 'highpass', gain: 0.06 }); }
   };
 })();
 window.addEventListener('keydown', SFX.unlock, { once: true });

@@ -16,6 +16,9 @@ Object.assign(DungeonScene.prototype, {
     const nx = this.current.x + d.dx, ny = this.current.y + d.dy;
     const st0 = this.getDoorState(this.current.x, this.current.y, nx, ny);
     let st = st0 || 'solid';
+    // Unlock-all cheat: never render a door as "sealed" (combat-gated) or
+    // "locked"/"cracked" — it matches isDoorPassable() waiving those checks.
+    if(this.unlockAllActive) return st === 'solid' ? 'solid' : 'open';
     if(st0 && !inst.cleared && st0 === 'open') st = 'sealed';
     return st;
   },

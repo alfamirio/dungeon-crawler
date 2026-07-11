@@ -296,6 +296,23 @@ Object.assign(DungeonScene.prototype, {
     this.hitStop = Math.max(this.hitStop, CONFIG.effects.attackHitStop);
   },
 
+  // ---- Weapon: arrow hit (bow) — single-use projectile, destroyed on impact ----
+  onArrowHitEnemy(arrowSprite, enemySprite){
+    const en = enemySprite;
+    const cc = CONFIG.combat;
+    en.hp -= cc.arrowDamage;
+    this.triggerEnemyHitFlash(en, CONFIG.combat.swordHitFlash);
+    SFX.arrowHit();
+    if(en.hpBarFill) en.hpBarFill.setSize(this.enemyHpBarWidth(en), CONFIG.enemies.hpBar.height);
+    const kbScale = cc.arrowKnockback * this._dt * cc.attackKnockbackTimeScale;
+    const nx = en.x + (arrowSprite.dirX || 0) * kbScale;
+    const ny = en.y + (arrowSprite.dirY || 0) * kbScale;
+    en.body.reset(nx, ny);
+    this.burst(en.rx, en.ry, en.enemyType === 'boss' ? COLORS.chest : COLORS.chaser, 6);
+    this.hitStop = Math.max(this.hitStop, CONFIG.effects.attackHitStop);
+    arrowSprite.destroy();
+  },
+
   // ---- Weapon: hookshot (R) — instant target-lock at range, animated chain ----
   // Finds the nearest active enemy within range and within a facing cone;
   // damage is applied once the animated chain reaches full extension, so the
@@ -307,7 +324,7 @@ Object.assign(DungeonScene.prototype, {
 
     if(p.hookCd > 0) p.hookCd -= dt;
 
-    if(Phaser.Input.Keyboard.JustDown(k.hook) && p.hookCd <= 0 && p.dashing <= 0 && !p.shielding){
+    if(Phaser.Input.Keyboard.JustDown(k.hook) && p.hookCd <= 0 && p.dashing <= 0 && !p.shielding && p.jumping <= 0){
       p.hookCd = hc.cooldown;
       const room = this.curInst();
       let best = null, bestDist = Infinity;
@@ -393,8 +410,10 @@ Object.assign(DungeonScene.prototype, {
     } else if(type === 'reward'){
       const bonusHp = Math.round(p.maxHp * CONFIG.items.clearChestHpPercent);
       const bonusBombs = Math.round(p.maxBombs * CONFIG.items.clearChestBombPercent);
+      const bonusArrows = Math.round(p.maxArrows * CONFIG.items.clearChestArrowPercent);
       p.hp = Phaser.Math.Clamp(p.hp + bonusHp, 0, p.maxHp);
       p.bombs = Phaser.Math.Clamp(p.bombs + bonusBombs, 0, p.maxBombs);
+      p.arrows = Phaser.Math.Clamp(p.arrows + bonusArrows, 0, p.maxArrows);
       SFX.chestPickup();
     }
     this.burst(chestSprite.x - WALL, chestSprite.y - WALL, COLORS.chest, 24);
@@ -410,7 +429,7 @@ Object.assign(DungeonScene.prototype, {
 
     if(p.attackCd > 0) p.attackCd -= dt;
     if(p.attacking > 0) p.attacking -= dt;
-    if(k.space.isDown && p.attackCd <= 0 && !p.shielding && p.dashing <= 0){
+    if(k.space.isDown && p.attackCd <= 0 && !p.shielding && p.dashing <= 0 && p.jumping <= 0){
       p.attackCd = CONFIG.player.attackCooldown;
       p.attacking = CONFIG.player.attackDuration;
       this._swordHitSet.clear();
@@ -452,9 +471,11 @@ Object.assign(DungeonScene.prototype, {
   handleBombs(){
     const p = this.playerSprite;
     const k = this.keys;
-    // JustDown() detects the key-press edge
-    if(Phaser.Input.Keyboard.JustDown(k.bomb) && p.bombs > 0){
-      p.bombs--;
+    // JustDown() detects the key-press edge. Unlock-all cheat: ammo is
+    // never consumed (still counts toward stats), so bombs are effectively
+    // unlimited while it's active — see setUnlockAll() in dungeon-debug.js.
+    if(Phaser.Input.Keyboard.JustDown(k.bomb) && (this.unlockAllActive || p.bombs > 0)){
+      if(!this.unlockAllActive) p.bombs--;
       this.stats.bombsUsed++;
       this.updateStatsPanel();
       SFX.bombPlace();
@@ -466,6 +487,38 @@ Object.assign(DungeonScene.prototype, {
       spr.fuseTween = this.tweens.add({ targets: spr, alpha: { from: 0.75, to: 1 }, duration: 140, yoyo: true, repeat: -1 });
       // Fuse: one-shot delayedCall triggers detonation
       spr.fuseTimer = this.time.delayedCall(CONFIG.combat.bombFuseTime * 1000, () => this.detonateBomb(spr));
+    }
+  },
+
+  // ---- Weapon: bow ---- Fires a straight-line arrow in the facing direction,
+  // gated by ammo (start/max in CONFIG.player.startArrows/maxArrows) and a
+  // short cooldown (unlike bombs, which are only gated by ammo) so holding
+  // the key can't dump the whole quiver in a single second.
+  handleBow(dt){
+    const p = this.playerSprite;
+    const k = this.keys;
+    const cc = CONFIG.combat;
+
+    if(p.bowCd > 0) p.bowCd -= dt;
+
+    // Unlock-all cheat: same ammo-never-consumed treatment as bombs above,
+    // so arrows are effectively unlimited (still cooldown-gated) while active.
+    if(Phaser.Input.Keyboard.JustDown(k.bow) && p.bowCd <= 0 && (this.unlockAllActive || p.arrows > 0) && !p.shielding && p.dashing <= 0 && p.jumping <= 0){
+      p.bowCd = cc.bowCooldown;
+      if(!this.unlockAllActive) p.arrows--;
+      this.stats.arrowsUsed++;
+      this.updateStatsPanel();
+      SFX.bowFire();
+      const angle = Math.atan2(p.dir.y, p.dir.x);
+      const spawnOffset = 30;
+      const sx = p.x + Math.cos(angle) * spawnOffset, sy = p.y + Math.sin(angle) * spawnOffset;
+      const arrow = this.arrowsGroup.create(sx, sy, 'tex_arrow');
+      arrow.setRotation(angle);
+      arrow.dirX = Math.cos(angle); arrow.dirY = Math.sin(angle);
+      arrow.setCircle(4, arrow.width / 2 - 4, arrow.height / 2 - 4);
+      arrow.body.setAllowGravity(false);
+      arrow.setVelocity(arrow.dirX * cc.arrowSpeed, arrow.dirY * cc.arrowSpeed);
+      arrow.setDepth(3);
     }
   },
 

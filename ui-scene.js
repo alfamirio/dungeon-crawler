@@ -16,6 +16,9 @@ class UIScene extends Phaser.Scene {
     this.bombIcon = this.add.image(20, 50, 'tex_hud_bomb').setScrollFactor(0).setDepth(20);
     this.bombText = this.add.text(34, 43, '0/0', { fontFamily: 'Segoe UI, sans-serif', fontSize: '14px', color: '#d9dce3' }).setScrollFactor(0).setDepth(20);
 
+    this.bowIcon = this.add.image(150, 50, 'tex_hud_bow').setScrollFactor(0).setDepth(20);
+    this.bowText = this.add.text(164, 43, '0/0', { fontFamily: 'Segoe UI, sans-serif', fontSize: '14px', color: '#d9dce3' }).setScrollFactor(0).setDepth(20);
+
     this.keyIcon = this.add.image(96, 50, 'tex_hud_key').setScrollFactor(0).setDepth(20).setVisible(false);
     this.keyText = this.add.text(110, 44, 'key', { fontFamily: 'Segoe UI, sans-serif', fontSize: '13px', color: '#d9dce3' }).setScrollFactor(0).setDepth(20).setVisible(false);
 
@@ -62,7 +65,10 @@ class UIScene extends Phaser.Scene {
     }
   }
 
-  setBombs(bombs, maxBombs){ this.bombText.setText(bombs + '/' + maxBombs); }
+  // Shows '∞' instead of a count while the sidebar's "Unlock all" cheat is
+  // active, since dungeon-combat.js stops consuming ammo in that state.
+  setBombs(bombs, maxBombs){ this.bombText.setText((DUNGEON_SCENE && DUNGEON_SCENE.unlockAllActive) ? '∞' : (bombs + '/' + maxBombs)); }
+  setArrows(arrows, maxArrows){ this.bowText.setText((DUNGEON_SCENE && DUNGEON_SCENE.unlockAllActive) ? '∞' : (arrows + '/' + maxArrows)); }
   setKey(has){ this.keyIcon.setVisible(has); this.keyText.setVisible(has); }
   setGod(has){ this.godIcon.setVisible(has); this.godText.setVisible(has); }
 

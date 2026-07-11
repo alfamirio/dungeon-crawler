@@ -59,14 +59,27 @@ Object.assign(DungeonScene.prototype, {
     this.rebuildFog(this.curInst());
   },
 
-  // Unlocks every locked door in the dungeon (sidebar "Unlock all" switch).
-  // One-way cheat: turning the switch back off does not re-lock doors.
+  // Unlocks every locked/cracked door in the dungeon, hands over the boss
+  // key, and tops off bombs/arrows (sidebar "Unlock all" switch). Bomb/arrow
+  // consumption is also suppressed while this is active (see handleBombs/
+  // handleBow in dungeon-combat.js) so ammo effectively stays unlimited.
+  // One-way cheat: turning the switch back off does not re-lock doors, take
+  // the key back, or drain ammo.
   setUnlockAll(on){
     this.unlockAllActive = on;
+    const p = this.playerSprite;
+    // Force the HUD to re-render its bomb/arrow counters now (they only
+    // normally refresh on a changedata event), so the '∞' swap in/out is
+    // immediate even if the count itself doesn't happen to change below.
+    this.ui.setBombs(p.bombs, p.maxBombs);
+    this.ui.setArrows(p.arrows, p.maxArrows);
     if(!on) return;
     for(const door of this.dungeon.doors.values()){
-      if(door.state === 'locked') door.state = 'open';
+      if(door.state === 'locked' || door.state === 'cracked') door.state = 'open';
     }
+    p.hasKey = true;
+    p.bombs = p.maxBombs;
+    p.arrows = p.maxArrows;
     this.rebuildWalls();
   },
 
@@ -119,8 +132,6 @@ Object.assign(DungeonScene.prototype, {
   },
 
   // ---------- HTML sidebar: run-stats panel ----------
-  // Note: arrows/jumps have no corresponding mechanic in this build yet,
-  // so those rows stay at their static "0" and are left for later.
   updateStatsPanel(){
     const inst = this.curInst();
     const visitedCount = [...this.roomInstances.values()].filter(r => r.visited).length;
@@ -133,7 +144,9 @@ Object.assign(DungeonScene.prototype, {
     set('stat-rooms', visitedCount);
     set('stat-enemies', this.stats.enemiesDefeated);
     set('stat-bombs', this.stats.bombsUsed);
+    set('stat-arrows', this.stats.arrowsUsed);
     set('stat-dashes', this.stats.dashesUsed);
+    set('stat-jumps', this.stats.jumpsUsed);
     set('stat-depth', depth);
     set('stat-biome', biome.name);
     set('stat-difficulty', difficulty.toFixed(2));

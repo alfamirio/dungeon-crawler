@@ -12,7 +12,9 @@ Open `index.html` in a browser to play — no build step, no server required.
 | Space | Attack (sword) |
 | Shift | Raise shield |
 | B | Place bomb |
+| F | Fire bow (20 arrows, refilled by reward chests) |
 | E | Dash |
+| J | Jump (brief invincibility, clears pit hazards) |
 | R | Fire hookshot |
 | K | Debug: clear current room |
 | I | Debug: toggle invincibility |
@@ -20,7 +22,7 @@ Open `index.html` in a browser to play — no build step, no server required.
 | H | Debug: return to start room |
 | 1 / 2 / 3 / 4 | Debug: warp to adjacent room (N/E/S/W) |
 
-The right-hand sidebar mirrors most debug actions as buttons/toggles (Clear room, Warp to boss/start, Invincibility, Unlock all, Adaptive difficulty, Force fog) for mouse/touch use, plus a live run-stats panel and minimap.
+The right-hand sidebar mirrors most debug actions as buttons/toggles (Clear room, Warp to boss/start, Invincibility, Unlock all, Adaptive difficulty, Force fog) for mouse/touch use, plus a live run-stats panel and minimap. **Unlock all** is a full "cheat mode" toggle: it opens every locked and cracked door in the dungeon, hands you the boss key, and gives you unlimited bombs/arrows (shown as `∞` on the HUD) for as long as it's on — turning it back off doesn't re-lock anything or drain ammo.
 
 ## Core systems
 
@@ -29,6 +31,8 @@ The right-hand sidebar mirrors most debug actions as buttons/toggles (Clear room
 **Biomes** (`config.js`) — 13 biome presets (Stone, Roots, Ice, Lava, Desert, Cave, Graveyard, Alien, Island, Temple, Neon, Factory), each with its own floor/wall art, ambient particle behavior, and fog tint. Assigned per-room at generation time.
 
 **Enemies & AI** (`dungeon-enemy-ai.js`, `dungeon-generation.js`) — Chasers, turrets, and bosses, each optionally rolling a **personality** (`hunter` — leads its aim/movement toward the player; `camper` — holds range) and a **skill** (`explosive` — kamikaze rush/lobbed bombs/AoE slam; `radial` — ranged lash/ring bursts), with roll chance increasing by room depth.
+
+**Weapons & movement** (`dungeon-combat.js`, `dungeon-player.js`) — Sword (melee swing), bombs (placed, fused, area damage, breaks cracked walls), bow (straight-line arrows, 20-arrow quiver, refilled by reward chests same as bombs), shield (directional block), dash (short i-framed burst), jump (i-framed hop — immune to all damage for its duration, including pit falls, so it doubles as a way to cross a pit hazard; the real player sprite stays put at ground level for collision purposes while a cosmetic stand-in sprite arcs up above it with a squash-and-stretch scale curve), and hookshot (instant-lock ranged grapple/damage).
 
 **Adaptive difficulty** (`dungeon-adaptive.js`) — Tracks a rolling skill estimate from per-room damage taken, clear time, and bomb/dash usage, plus a penalty on death. The result scales enemy HP/speed/turret cadence by up to ±20% (bosses damped to 40% of the swing). Persists across retries within a session; only resets on a full page reload. Toggle via the sidebar or `CONFIG.adaptive.enabled`.
 

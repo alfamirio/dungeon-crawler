@@ -7,6 +7,10 @@
 // Extends DungeonScene.prototype (class is defined in dungeon-scene.js).
 // ===================================================================
 
+// Base squash applied to the 64x64 tex_shadow_soft texture to read as a
+// small ground-contact ellipse under the player; see handleJump() below.
+const JUMP_SHADOW_SX = 0.62, JUMP_SHADOW_SY = 0.28;
+
 Object.assign(DungeonScene.prototype, {
 
   // (Re)spawns obstacles/enemies for the current room and clears leftover projectiles/bombs.
@@ -39,6 +43,7 @@ Object.assign(DungeonScene.prototype, {
     this.adaptiveOnRoomEnter();
 
     this.projectilesGroup.clear(true, true);
+    this.arrowsGroup.clear(true, true);
     for(const b of this.bombsGroup.getChildren()){
       if(b.fuseTween) b.fuseTween.stop();
       if(b.fuseTimer) b.fuseTimer.remove(false);
@@ -131,10 +136,72 @@ Object.assign(DungeonScene.prototype, {
     return toSrc.dot(p.dir) >= CONFIG.player.shieldBlockDot;
   },
 
+  // ---- Jump: brief i-frame hop (immune to all damage, including pit falls —
+  // see the p.jumping check in onPlayerPitOverlap below). Purely a timed
+  // invulnerability window; doesn't change movement speed or disable the
+  // player's collision with walls/obstacles.
+  //
+  // Visually, the real playerSprite (the physics body everything collides
+  // against) never leaves the ground plane — it's just hidden for the
+  // duration. In its place, jumpVisualSprite (a plain, non-physics image
+  // that mirrors its texture/rotation) is driven up along a parabolic arc
+  // and put through a classic squash-(takeoff)/stretch-(apex)/squash-
+  // (landing) scale curve, while jumpShadowSprite shrinks and fades under
+  // it to sell the height. This keeps collision/overlap detection exactly
+  // as before; only the cosmetic layer moves.
+  handleJump(dt){
+    const p = this.playerSprite;
+    const k = this.keys;
+    const jp = CONFIG.player;
+
+    if(p.jumpCd > 0) p.jumpCd -= dt;
+    if(p.jumping > 0) p.jumping -= dt;
+
+    if(Phaser.Input.Keyboard.JustDown(k.jump) && p.jumpCd <= 0 && p.jumping <= 0 && !p.shielding && p.dashing <= 0 && p.attacking <= 0){
+      p.jumping = jp.jumpDuration;
+      p.jumpCd = jp.jumpCooldown;
+      p.invuln = Math.max(p.invuln, p.jumping);
+      this.stats.jumpsUsed++;
+      this.updateStatsPanel();
+      SFX.jump();
+
+      this.jumpVisualSprite.setTexture(p.texture.key).setRotation(p.rotation).setScale(1, 1).setVisible(true);
+      p.setVisible(false);
+      this.jumpShadowSprite.setVisible(true).setScale(JUMP_SHADOW_SX, JUMP_SHADOW_SY).setAlpha(0.45);
+    }
+
+    if(p.jumping > 0){
+      // t runs 0 -> 1 over the hop; arc is a simple 0 -> 1 -> 0 hump (peak at
+      // the midpoint) used both for height and for the stretch/squash blend.
+      const t = 1 - p.jumping / jp.jumpDuration;
+      const arc = Math.sin(t * Math.PI);
+      const liftPx = arc * jp.jumpHeight;
+
+      // Squash hard right at takeoff/landing (edge -> 1), ease out of it as
+      // the hop gets airborne (edge -> 0 by mid-air), then stretch tall at
+      // the apex on top of that.
+      const edge = Math.pow(1 - arc, 3);
+      const scaleY = 1 + arc * jp.jumpStretch - edge * jp.jumpSquash;
+      const scaleX = 1 - arc * jp.jumpSqueeze + edge * jp.jumpSquash * 0.65;
+
+      this.jumpVisualSprite.setPosition(p.x, p.y - liftPx).setScale(scaleX, scaleY).setRotation(p.rotation);
+      // Ground shadow: stays pinned to the true ground position (not the
+      // lifted visual), shrinking and fading as the hop gets higher so the
+      // growing gap between the two reads as height.
+      this.jumpShadowSprite.setPosition(p.x, p.y + 16);
+      const shrink = 1 - arc * 0.55;
+      this.jumpShadowSprite.setScale(JUMP_SHADOW_SX * shrink, JUMP_SHADOW_SY * shrink).setAlpha(0.45 - arc * 0.25);
+    } else if(this.jumpVisualSprite.visible){
+      this.jumpVisualSprite.setVisible(false);
+      this.jumpShadowSprite.setVisible(false);
+      p.setVisible(true).setScale(1);
+    }
+  },
+
   // ---- Pit hazard: overlap callback for pitZonesGroup ----
   onPlayerPitOverlap(playerSprite, zone){
     const p = this.playerSprite;
-    if(p.godmode || p.falling || p.dashing > 0 || this.gameOver || this.gameWon) return;
+    if(p.godmode || p.falling || p.dashing > 0 || p.jumping > 0 || this.gameOver || this.gameWon) return;
     if(!pointInPit(p.rx, p.ry, zone.pitRef)) return; // inside the zone's bbox but not the actual hole
     this.triggerPlayerFall();
   },
@@ -148,7 +215,7 @@ Object.assign(DungeonScene.prototype, {
     SFX.pitFall();
     this.cameras.main.shake(220, 0.012);
     this.tweens.add({
-      targets: [p, this.tailSprite], scale: 0, alpha: 0, duration: CONFIG.pits.playerFallDuration * 1000, ease: 'Cubic.easeIn',
+      targets: p, scale: 0, alpha: 0, duration: CONFIG.pits.playerFallDuration * 1000, ease: 'Cubic.easeIn',
       onComplete: () => {
         p.hp = 0;
         this.gameOver = true;
@@ -187,7 +254,7 @@ Object.assign(DungeonScene.prototype, {
     // i-frames for its duration (piggybacks on the existing invuln check
     // in damagePlayer). Can't be started while shielding, mid-swing, or
     // already dashing/on cooldown.
-    if(Phaser.Input.Keyboard.JustDown(k.dash) && p.dashCd <= 0 && p.dashing <= 0 && !p.shielding && p.attacking <= 0){
+    if(Phaser.Input.Keyboard.JustDown(k.dash) && p.dashCd <= 0 && p.dashing <= 0 && !p.shielding && p.attacking <= 0 && p.jumping <= 0){
       const dp = CONFIG.player;
       p.dashing = dp.dashDuration;
       p.dashCd = dp.dashCooldown;
@@ -199,7 +266,7 @@ Object.assign(DungeonScene.prototype, {
       SFX.dash();
     }
 
-    p.shielding = p.hasShield && k.shift.isDown && p.dashing <= 0;
+    p.shielding = p.hasShield && k.shift.isDown && p.dashing <= 0 && p.jumping <= 0;
 
     const move = new Phaser.Math.Vector2(0, 0);
     if(k.left.isDown || k.a.isDown) move.x -= 1;

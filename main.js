@@ -42,6 +42,10 @@ class PlayerSprite extends Phaser.Physics.Arcade.Sprite {
   set bombs(v){ this.setData('bombs', v); }
   get maxBombs(){ return this.getData('maxBombs'); }
   set maxBombs(v){ this.setData('maxBombs', v); }
+  get arrows(){ return this.getData('arrows'); }
+  set arrows(v){ this.setData('arrows', v); }
+  get maxArrows(){ return this.getData('maxArrows'); }
+  set maxArrows(v){ this.setData('maxArrows', v); }
   get hasKey(){ return this.getData('hasKey'); }
   set hasKey(v){ this.setData('hasKey', v); }
   get godmode(){ return this.getData('godmode'); }

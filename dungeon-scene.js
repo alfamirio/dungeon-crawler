@@ -22,7 +22,7 @@ class DungeonScene extends Phaser.Scene {
   create(){
     DUNGEON_SCENE = this;
     // Run-stat counters surfaced in the HTML sidebar (see updateStatsPanel)
-    this.stats = { enemiesDefeated: 0, bombsUsed: 0, dashesUsed: 0 };
+    this.stats = { enemiesDefeated: 0, bombsUsed: 0, dashesUsed: 0, arrowsUsed: 0, jumpsUsed: 0 };
     // Adaptive-difficulty skill estimate: initialized once per page load
     // (not per newGame()) so it can carry across retries within a session.
     this.initAdaptive();
@@ -88,6 +88,9 @@ class DungeonScene extends Phaser.Scene {
     this.enemiesGroup = this.physics.add.group({ classType: EnemySprite });
     this.projectilesGroup = this.physics.add.group();
     this.bombsGroup = this.physics.add.group();
+    // Player-fired arrows: kept separate from projectilesGroup (enemy fire
+    // that damages the player) so the two never cross-hit their own side.
+    this.arrowsGroup = this.physics.add.group();
     // Dynamic group so the chest's bob tween can move it freely
     this.chestGroup = this.physics.add.group();
     // Invisible unlock zones along locked-door walls, rebuilt in rebuildWalls()
@@ -107,6 +110,8 @@ class DungeonScene extends Phaser.Scene {
     this.playerSprite.on('changedata-hp', (_obj, value) => this.ui.setHearts(value));
     this.playerSprite.on('changedata-bombs', (_obj, value) => this.ui.setBombs(value, this.playerSprite.maxBombs));
     this.playerSprite.on('changedata-maxBombs', (_obj, value) => this.ui.setBombs(this.playerSprite.bombs, value));
+    this.playerSprite.on('changedata-arrows', (_obj, value) => this.ui.setArrows(value, this.playerSprite.maxArrows));
+    this.playerSprite.on('changedata-maxArrows', (_obj, value) => this.ui.setArrows(this.playerSprite.arrows, value));
     this.playerSprite.on('changedata-hasKey', (_obj, value) => this.ui.setKey(value));
     this.playerSprite.on('changedata-godmode', (_obj, value) => {
       this.ui.setGod(value);
@@ -123,11 +128,6 @@ class DungeonScene extends Phaser.Scene {
 
     this.shieldSprite = this.add.image(WALL, WALL, 'tex_shield').setDepth(5).setVisible(false);
 
-    // Small wagging tail, trailing just behind the player (see updateTailVisual()).
-    this.tailSprite = this.add.image(WALL, WALL, 'tex_tail_poof').setTint(COLORS.playerTail).setDepth(3.9);
-    this.tailWag = { angle: 0 };
-    this.tweens.add({ targets: this.tailWag, angle: 0.4, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-
     // Hookshot: a redrawn chain line + arrowhead sprite, driven by handleHookshot()
     this.hookGraphics = this.add.graphics().setDepth(4.2);
     this.hookHeadSprite = this.add.image(WALL, WALL, 'tex_hook_head').setDepth(4.3).setVisible(false);
@@ -139,6 +139,15 @@ class DungeonScene extends Phaser.Scene {
       .setVisible(false);
     this.godRingTween = null;
 
+    // Jump: a soft shadow shown under the player while jumping (i-framed
+    // hop, also used to clear pit hazards — see onPlayerPitOverlap), plus a
+    // cosmetic stand-in sprite that visually arcs up above that shadow while
+    // the real (physics-driven) playerSprite stays put at ground level, so
+    // collision/overlaps keep working normally throughout the hop. See
+    // handleJump() in dungeon-player.js for the per-frame arc/squash math.
+    this.jumpShadowSprite = this.add.image(WALL, WALL, 'tex_shadow_soft').setDepth(3.8).setVisible(false);
+    this.jumpVisualSprite = this.add.image(WALL, WALL, 'tex_player').setDepth(4.05).setVisible(false);
+
     // Colliders/overlaps set up once. Walls are static bodies rebuilt per
     // room in rebuildWalls(); enemies/projectiles get wall-blocking for free.
     this.physics.add.collider(this.playerSprite, this.obstaclesGroup);
@@ -147,6 +156,10 @@ class DungeonScene extends Phaser.Scene {
     this.physics.add.collider(this.playerSprite, this.wallsGroup);
     this.physics.add.collider(this.enemiesGroup, this.wallsGroup);
     this.physics.add.collider(this.projectilesGroup, this.wallsGroup, (proj) => proj.destroy());
+    // Arrows: stop on the same things enemy projectiles stop on, hit enemies only.
+    this.physics.add.collider(this.arrowsGroup, this.obstaclesGroup, (arrow) => arrow.destroy());
+    this.physics.add.collider(this.arrowsGroup, this.wallsGroup, (arrow) => arrow.destroy());
+    this.physics.add.overlap(this.arrowsGroup, this.enemiesGroup, this.onArrowHitEnemy, null, this);
     // Keep enemies from stacking on top of each other
     this.physics.add.collider(this.enemiesGroup, this.enemiesGroup);
     // Collider (not overlap) so the bodies get physically separated;
@@ -165,7 +178,7 @@ class DungeonScene extends Phaser.Scene {
       up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT',
       w: 'W', a: 'A', s: 'S', d: 'D',
       space: 'SPACE', shift: 'SHIFT', dash: 'E', hook: 'R',
-      bomb: 'B', dbgKill: 'K', dbgGod: 'I', dbgWarp: 'Y', dbgHome: 'H',
+      bomb: 'B', bow: 'F', jump: 'J', dbgKill: 'K', dbgGod: 'I', dbgWarp: 'Y', dbgHome: 'H',
       // Debug: warp to the room adjacent to the current one, if it exists —
       // 1=N(top), 2=E(right), 3=S(bottom), 4=W(left) (see warpToAdjacentRoom)
       dbgWarpN: 'ONE', dbgWarpE: 'TWO', dbgWarpS: 'THREE', dbgWarpW: 'FOUR'
@@ -191,7 +204,8 @@ class DungeonScene extends Phaser.Scene {
     this.scheduleBlink();
   }
 
-  // ---- Cute idle bits: periodic blink + the tail trailing behind the player ----
+  // ---- Cute idle bits: periodic blink (see the baked-in tail on the player
+  // texture itself, drawn in textures.js, for the other idle flourish) ----
   scheduleBlink(){
     this.blinkTimer = this.time.delayedCall(1800 + Math.random() * 3200, () => {
       if(!this.gameOver && !this.gameWon && !this.playerSprite.falling &&
@@ -204,15 +218,6 @@ class DungeonScene extends Phaser.Scene {
       }
       this.scheduleBlink();
     });
-  }
-
-  updateTailVisual(){
-    const p = this.playerSprite;
-    const backAngle = Math.atan2(p.dir.y, p.dir.x) + Math.PI;
-    const wag = this.tailWag ? this.tailWag.angle : 0;
-    const offset = 26;
-    this.tailSprite.setPosition(p.x + Math.cos(backAngle) * offset, p.y + Math.sin(backAngle) * offset);
-    this.tailSprite.setRotation(backAngle + wag);
   }
 
   newGame(){
@@ -258,9 +263,11 @@ class DungeonScene extends Phaser.Scene {
 
     ps.hp = CONFIG.player.startHp; ps.maxHp = CONFIG.player.maxHp;
     ps.bombs = CONFIG.player.startBombs; ps.maxBombs = CONFIG.player.maxBombs;
+    ps.arrows = CONFIG.player.startArrows; ps.maxArrows = CONFIG.player.maxArrows; ps.bowCd = 0;
     ps.hasKey = false; ps.invuln = 0; ps.attackCd = 0; ps.attacking = 0;
     ps.godmode = false; ps.hasShield = true; ps.shielding = false;
     ps.dashCd = 0; ps.dashing = 0; ps.dashDir = { x: 0, y: 1 };
+    ps.jumpCd = 0; ps.jumping = 0;
     ps.falling = false;
     ps.hookCd = 0; ps.hookActive = false; ps.hookElapsed = 0; ps.hookTotal = 0;
     ps.hookDist = 0; ps.hookTargetEnemy = null; ps.hookHasDealt = false;
@@ -272,9 +279,10 @@ class DungeonScene extends Phaser.Scene {
     this.playerSprite.setAlpha(1);
     this.playerSprite.setScale(1);
     this.playerSprite.setTexture('tex_player');
-    this.tailSprite.setAlpha(1);
-    this.tailSprite.setScale(1);
     this.setGodmodeVisual(false);
+    this.jumpShadowSprite.setVisible(false);
+    this.jumpVisualSprite.setVisible(false);
+    this.playerSprite.setVisible(true);
     if(this.invulnTween){ this.invulnTween.stop(); this.invulnTween = null; }
     if(this.invulnBlinkEnd){ this.invulnBlinkEnd.remove(); this.invulnBlinkEnd = null; }
     if(this.hurtFlashTimer){ this.hurtFlashTimer.remove(); this.hurtFlashTimer = null; }
@@ -284,7 +292,7 @@ class DungeonScene extends Phaser.Scene {
     this.gameWon = false;
     this.hitStop = 0;
     this._swordHitSet = new Set();
-    this.stats = { enemiesDefeated: 0, bombsUsed: 0, dashesUsed: 0 };
+    this.stats = { enemiesDefeated: 0, bombsUsed: 0, dashesUsed: 0, arrowsUsed: 0, jumpsUsed: 0 };
     this.unlockAllActive = false;
     const unlockChk = document.getElementById('cfg-unlock');
     if(unlockChk) unlockChk.checked = false;
@@ -302,9 +310,16 @@ class DungeonScene extends Phaser.Scene {
   biomeNow(){ return this.curInst().meta.biome; }
   getDoorState(x1, y1, x2, y2){ const d = this.dungeon.doors.get(doorKey(x1, y1, x2, y2)); return d ? d.state : null; }
   isDoorPassable(x1, y1, x2, y2){
+    const state = this.getDoorState(x1, y1, x2, y2);
+    if(state === null) return false; // no actual door between these rooms
+    // Unlock-all cheat: every real door is walkable immediately, regardless
+    // of the current room's cleared state or a door's locked/cracked state
+    // (setUnlockAll() already flips locked/cracked doors to 'open', so this
+    // just also waives the "room must be cleared first" gate below).
+    if(this.unlockAllActive) return true;
     const inst = this.curInst();
     if(!inst.cleared) return false;
-    return this.getDoorState(x1, y1, x2, y2) === 'open';
+    return state === 'open';
   }
 
   // ---------- Main update ----------
@@ -323,11 +338,12 @@ class DungeonScene extends Phaser.Scene {
     if(this.hitStop > 0){ this.hitStop -= dt; p.setVelocity(0, 0); return; }
 
     this.handleMovement(dt);
-    this.updateTailVisual();
     this.updateFogOfWar();
     this.handleSword(dt);
     this.handleShield();
     this.handleBombs();
+    this.handleBow(dt);
+    this.handleJump(dt);
     this.handleHookshot(dt);
     this.handleDebugKeys();
 
@@ -339,9 +355,11 @@ class DungeonScene extends Phaser.Scene {
 
   // ---- Projectiles: clean up whatever left the room ----
   cleanupProjectiles(){
-    for(const pr of this.projectilesGroup.getChildren().slice()){
-      const lx = pr.x - WALL, ly = pr.y - WALL;
-      if(lx < 0 || lx > ROOM_W || ly < 0 || ly > ROOM_H) pr.destroy();
+    for(const group of [this.projectilesGroup, this.arrowsGroup]){
+      for(const pr of group.getChildren().slice()){
+        const lx = pr.x - WALL, ly = pr.y - WALL;
+        if(lx < 0 || lx > ROOM_W || ly < 0 || ly > ROOM_H) pr.destroy();
+      }
     }
   }
 }

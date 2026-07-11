@@ -30,10 +30,36 @@ function buildTextures(scene){
     });
   }
 
-  // Player texture: rounded blob with a facing notch (sprite rotates to face
-  // movement), big sparkly forward-looking eyes, soft blush, and tiny brows
-  // for extra expressiveness/cuteness.
-  mk('tex_player', 58, 58, g => {
+  // Player texture canvas is padded on both sides so a tail can be baked in
+  // sticking out past the body silhouette on one side, while staying
+  // symmetric enough that the body circle still sits dead-center in the
+  // frame — that's what dungeon-scene.js's setCircle() collision body
+  // assumes (it always centers on width/2, height/2).
+  const TAIL_PAD = 18;
+  const PLAYER_TEX_W = 58 + TAIL_PAD * 2, PLAYER_TEX_H = 58;
+
+  // Fluffy tail "poof" — a cluster of soft circles rooted just behind the
+  // body and tapering to a narrow tip. Drawn BEFORE the body fill so the
+  // body circle overlaps/clips its inner edge (reads as attached to the
+  // body rather than a floating shape), with only the outer taper left
+  // poking out past the silhouette. Baked directly into every player
+  // texture variant below — no separate sprite/positioning/wag logic needed,
+  // it just rotates and flips with the body like any other body part.
+  const drawPlayerTail = g => {
+    g.fillStyle(COLORS.playerTail, 1);
+    g.fillCircle(9, 33, 10);
+    g.fillCircle(-3, 28, 7.5);
+    g.fillCircle(-11, 32, 5);
+    g.fillStyle(0xffffff, 0.3);
+    g.fillCircle(-11, 32, 2.2);
+  };
+
+  // Player texture: rounded blob with a tail, a facing notch (sprite
+  // rotates to face movement), big sparkly forward-looking eyes, soft
+  // blush, and tiny brows for extra expressiveness/cuteness.
+  mk('tex_player', PLAYER_TEX_W, PLAYER_TEX_H, g => {
+    g.translateCanvas(TAIL_PAD, 0);
+    drawPlayerTail(g);
     g.fillStyle(COLORS.player, 1);
     g.fillCircle(29, 29, 25);
     g.fillStyle(0xffffff, 0.28);
@@ -63,9 +89,11 @@ function buildTextures(scene){
     g.fillCircle(34, 39.5, 0.9);
   });
 
-  // Blink variant of the player texture — same body/blush/brows, eyes
+  // Blink variant of the player texture — same body/tail/blush/brows, eyes
   // replaced with closed happy-arc lids. Swapped in briefly for a blink.
-  mk('tex_player_blink', 58, 58, g => {
+  mk('tex_player_blink', PLAYER_TEX_W, PLAYER_TEX_H, g => {
+    g.translateCanvas(TAIL_PAD, 0);
+    drawPlayerTail(g);
     g.fillStyle(COLORS.player, 1);
     g.fillCircle(29, 29, 25);
     g.fillStyle(0xffffff, 0.28);
@@ -83,21 +111,11 @@ function buildTextures(scene){
     g.beginPath(); g.arc(33, 37, 6, Phaser.Math.DegToRad(20), Phaser.Math.DegToRad(160), true); g.strokePath();
   });
 
-  // Small fluffy tail "poof" — a cluster of soft circles, drawn white and
-  // tinted per-instance (matches the tex_pit_rock/tex_decor_corner pattern).
-  // Trails behind the player, independently wagged for a cute idle motion.
-  mk('tex_tail_poof', 26, 20, g => {
-    g.fillStyle(0xffffff, 1);
-    g.fillCircle(6, 10, 8);
-    g.fillCircle(15, 7, 6.5);
-    g.fillCircle(21, 11, 5);
-    g.fillStyle(0xffffff, 0.85);
-    g.fillCircle(21, 11, 3);
-  });
-
   // Pain variant — shown briefly on damagePlayer(). Eyes squeeze into a
   // scrunched "><" wince and brows knit sharply toward the center.
-  mk('tex_player_pain', 58, 58, g => {
+  mk('tex_player_pain', PLAYER_TEX_W, PLAYER_TEX_H, g => {
+    g.translateCanvas(TAIL_PAD, 0);
+    drawPlayerTail(g);
     g.fillStyle(COLORS.player, 1);
     g.fillCircle(29, 29, 25);
     g.fillStyle(0xffffff, 0.28);
@@ -119,7 +137,9 @@ function buildTextures(scene){
 
   // Success/happy variant — shown briefly on chest/key pickup. Eyes curve
   // into cheerful upward arcs, brows relax and lift, blush brightens.
-  mk('tex_player_happy', 58, 58, g => {
+  mk('tex_player_happy', PLAYER_TEX_W, PLAYER_TEX_H, g => {
+    g.translateCanvas(TAIL_PAD, 0);
+    drawPlayerTail(g);
     g.fillStyle(COLORS.player, 1);
     g.fillCircle(29, 29, 25);
     g.fillStyle(0xffffff, 0.28);
@@ -221,6 +241,17 @@ function buildTextures(scene){
     g.fillCircle(15, 19, 13);
     g.fillStyle(COLORS.bombFuse, 1);
     g.fillCircle(15, 5, 4);
+  });
+
+  // Weapon: arrow — shaft + head + fletching, drawn pointing along local +x
+  // (same "0 rotation = facing right" convention as the sword/hookshot head).
+  mk('tex_arrow', 28, 8, g => {
+    g.lineStyle(2.5, hex('#c9a06a'), 1);
+    g.lineBetween(2, 4, 20, 4);
+    g.fillStyle(0xd9dce3, 1);
+    g.fillTriangle(18, 0, 28, 4, 18, 8);
+    g.fillStyle(hex('#8a6a3f'), 1);
+    g.fillTriangle(2, 4, 8, 0, 8, 8);
   });
 
   // Generic obstacle (crate) texture — kept as a fallback for any biome key
@@ -427,6 +458,18 @@ function buildTextures(scene){
     }
   });
 
+  // Soft ground shadow — same concentric-rings trick as tex_glow but dark
+  // and denser toward the center, so it reads as a blurred contact shadow
+  // rather than a flat-edged shape. Squashed into an ellipse and faded/
+  // resized per-frame wherever it's used (currently just the player's jump
+  // hop — see handleJump() in dungeon-player.js).
+  mk('tex_shadow_soft', 64, 64, g => {
+    for(let i = 8; i >= 1; i--){
+      g.fillStyle(0x000000, 0.11 * i);
+      g.fillCircle(32, 32, (i / 8) * 32);
+    }
+  });
+
   // Chest textures: regular loot and secret-room variant
   mk('tex_chest', 40, 40, g => {
     g.fillStyle(COLORS.chest, 1);
@@ -553,6 +596,12 @@ function buildTextures(scene){
     g.fillCircle(8, 8, 7);
     g.lineStyle(2, hex('#f4d35e'), 1);
     g.strokeCircle(8, 8, 7);
+  });
+  mk('tex_hud_bow', 16, 16, g => {
+    g.lineStyle(2, hex('#f4d35e'), 1);
+    g.beginPath(); g.arc(3, 8, 7, Phaser.Math.DegToRad(-65), Phaser.Math.DegToRad(65)); g.strokePath();
+    g.lineStyle(1, hex('#f4d35e'), 0.8);
+    g.lineBetween(4, 1.7, 4, 14.3);
   });
   mk('tex_hud_key', 16, 16, g => {
     g.lineStyle(2, hex('#f4d35e'), 1);

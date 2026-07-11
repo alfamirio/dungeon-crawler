@@ -34,6 +34,14 @@ const CONFIG = {
     dashSpeed: 520,
     dashDuration: 0.18,
     dashCooldown: 0.6,
+    startArrows: 20,
+    maxArrows: 20,
+    jumpDuration: 0.45,   // i-frame window; also how long the hop animation plays
+    jumpCooldown: 0.8,
+    jumpHeight: 34,        // peak visual lift (px) of the hop arc above the ground
+    jumpStretch: 0.30,     // extra vertical stretch applied at the apex of the arc
+    jumpSqueeze: 0.20,     // extra horizontal squeeze applied at the apex of the arc
+    jumpSquash: 0.34,      // squash-down applied right at takeoff/landing
     swordPivotOffset: 26,
     swordSwingStartDeg: 45,
     swordSwingEndDeg: -45,
@@ -52,7 +60,8 @@ const CONFIG = {
     swordHitFlash: 0.12,
     bombHitFlash: 0.16,
     shieldPushSpeed: 140, // enemy push-back speed off a raised shield
-    attackKnockbackTimeScale: 6 // time-scaling factor for sword-hit knockback
+    attackKnockbackTimeScale: 6, // time-scaling factor for sword-hit knockback
+    bowCooldown: 0.3, arrowSpeed: 460, arrowDamage: 1, arrowKnockback: 80
   },
   hookshot: {
     range: 150,          // max distance a target can be hit from
@@ -173,7 +182,7 @@ const CONFIG = {
   items: {
     secretHealAmount: 2,
     // Reward chest that appears after a normal/boss room is fully cleared of enemies
-    clearChestHpPercent: 0.5, clearChestBombPercent: 0.5
+    clearChestHpPercent: 0.5, clearChestBombPercent: 0.5, clearChestArrowPercent: 0.5
   },
   pits: {
     roomChance: 0.55, // chance a normal/boss/key room gets pit hazards
